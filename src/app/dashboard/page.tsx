@@ -15,7 +15,7 @@ import WinLossDonut from "@/components/charts/WinLossDonut";
 import SessionCandles from "@/components/charts/SessionCandles";
 import DailyBars from "@/components/charts/DailyBars";
 
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase.client";
 import { listenAllTrades, listenCashflows, listenUser, saveOnboarding } from "@/lib/firestore";
 import { Cashflow, Trade, UserDoc } from "@/lib/types";
 import { endOfMonth, monthLabel, startOfMonth, ymd, fmtMoney, daysInMonth } from "@/lib/utils";

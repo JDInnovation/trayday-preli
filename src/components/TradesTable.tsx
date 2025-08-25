@@ -3,7 +3,7 @@
 import { Trade } from "@/lib/types";
 import { useMemo, useState } from "react";
 import { closeTrade, editTrade } from "@/lib/firestore";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase.client";
 import { typeFactor } from "@/lib/utils";
 import { Pencil } from "lucide-react";
 

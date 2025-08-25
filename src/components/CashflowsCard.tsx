@@ -1,6 +1,6 @@
 "use client";
 
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase.client";
 import { addCashflow, deleteCashflow } from "@/lib/firestore";
 import { Cashflow } from "@/lib/types";
 import { fmtMoney } from "@/lib/utils";

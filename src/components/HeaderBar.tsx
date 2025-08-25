@@ -1,6 +1,6 @@
 "use client";
 
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase.client";
 import { useEffect, useRef, useState } from "react";
 import { LogoutBtn } from "./AuthGate";
 import { Settings } from "lucide-react";

@@ -1,7 +1,7 @@
 "use client";
 
 import { addMonthExpense } from "@/lib/firestore";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase.client";
 import { fmtMoney } from "@/lib/utils";
 import { useState } from "react";
 

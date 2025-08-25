@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Trade, TradeTypeKey } from "@/lib/types";
-import { auth } from "@/lib/firebase";
+import { auth } from "@/lib/firebase.client";
 import { openTrade } from "@/lib/firestore";
 import { fmtMoney, typeFactor } from "@/lib/utils";
 

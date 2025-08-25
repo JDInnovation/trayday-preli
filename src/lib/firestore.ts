@@ -1,6 +1,6 @@
 "use client";
 
-import { db } from "./firebase";
+import { db } from "@/lib/firebase.client";
 import {
   collection, doc, setDoc, getDoc, addDoc, onSnapshot, query, where, orderBy, runTransaction, deleteDoc
 } from "firebase/firestore";
