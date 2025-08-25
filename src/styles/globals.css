@@ -1,0 +1,25 @@
+/* src/app/globals.css — Tailwind v3 */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { color-scheme: dark; }
+html, body { height: 100%; }
+body { @apply bg-bg text-text; }
+
+.card { @apply bg-elev border border-line rounded-2xl p-4 shadow-2xl; }
+.btn { @apply bg-brand text-bg font-bold px-4 py-2 rounded-xl; }
+.btn-ghost { @apply bg-transparent text-text border border-slate-600 rounded-xl; }
+
+.input, .select, .segmented {
+  @apply w-full bg-[#0f172a] text-text border border-[#263043] rounded-xl px-3 py-2 outline-none;
+}
+
+.label { @apply text-sub text-xs mb-1 block; }
+.small { @apply text-sub text-xs; }
+.kpi .title { @apply text-sub text-xs; }
+.kpi .value { @apply text-2xl font-extrabold; }
+
+.table { @apply w-full border-collapse; }
+.table th, .table td { @apply border-b border-line p-2 text-left text-sm; }
+.table th { @apply text-sub font-bold; }
