@@ -23,3 +23,8 @@ body { @apply bg-bg text-text; }
 .table { @apply w-full border-collapse; }
 .table th, .table td { @apply border-b border-line p-2 text-left text-sm; }
 .table th { @apply text-sub font-bold; }
+
+.kpi .value{
+  padding-left:1rem !important ;
+  font-size: 1.2rem;
+}

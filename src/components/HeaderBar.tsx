@@ -30,13 +30,13 @@ export default function HeaderBar() {
       <div className="flex items-center justify-between">
         <div>
           <h2 className="text-xl font-bold">Olá, {email} 👋</h2>
-          <div className="small">Hoje é {today}. Cada dia é uma sessão — nem sempre é dia de operar.</div>
+          <div className="small">Hoje é {today}. Cada dia é uma sessão.</div>
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-ghost w-10 h-10 flex items-center justify-center rounded-xl" title="Definições (em breve)">
             <Settings className="w-5 h-5" />
           </button>
-          <div className="small">Sessão: <span className="tabular-nums">{clock}</span></div>
+          <div className="small">Tempo da Sessão: <span className="tabular-nums">{clock}</span></div>
           <LogoutBtn />
         </div>
       </div>
