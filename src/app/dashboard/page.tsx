@@ -1,5 +1,5 @@
-// src/app/dashboard/page.tsx
 "use client";
+export const dynamic = "force-dynamic";
 
 import AuthGate from "@/components/AuthGate";
 import HeaderBar from "@/components/HeaderBar";
