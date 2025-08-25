@@ -99,9 +99,7 @@ export async function editTrade(uidStr: string, next: Trade) {
       next.closedAt = null;
     }
 
-    const patch: Partial<Trade> = next; // garante que é um "patch"
-tx.set(tRef, patch as any, { merge: true });
-
+    tx.update(tRef, next);
     tx.update(uRef, { currentBalance: (u.currentBalance || 0) + delta });
   });
 }
