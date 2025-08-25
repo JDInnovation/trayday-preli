@@ -8,6 +8,7 @@
     "start": "next start -p 3000",
     "lint": "next lint"
   },
+  
   "dependencies": {
     "clsx": "^2.1.1",
     "firebase": "^10.12.4",

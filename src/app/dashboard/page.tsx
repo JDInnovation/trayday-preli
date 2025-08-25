@@ -240,7 +240,7 @@ function DashboardContent({ user, trades, cashflows }:{
             onBack={() => setAnnualMode(false)}
             onPrevYear={() => setAnnualYear(y => y - 1)}
             onNextYear={() => setAnnualYear(y => y + 1)}
-            onPickYear={(y) => setAnnualYear(y)}
+           onPickYear={(y: number) => setAnnualYear(y)}
           />
         </div>
       )}
