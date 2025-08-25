@@ -1,8 +1,9 @@
+// src/lib/firebase.client.ts
 "use client";
 
 import { initializeApp, getApps, getApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { getFirestore } from "firebase/firestore";
+import { initializeFirestore, enableNetwork } from "firebase/firestore";
 
 const cfg = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
@@ -15,5 +16,13 @@ const cfg = {
 
 const app = getApps().length ? getApp() : initializeApp(cfg);
 
+// Firestore com auto-deteção de long-polling (evita redes que bloqueiam WebChannel)
+export const db = initializeFirestore(app, {
+  ignoreUndefinedProperties: true,
+  experimentalAutoDetectLongPolling: true,
+});
+
 export const auth = getAuth(app);
-export const db = getFirestore(app);
+
+// Garante que a rede está ligada no cliente
+enableNetwork(db).catch(() => {});

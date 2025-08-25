@@ -17,6 +17,7 @@ import WinLossDonut from "@/components/charts/WinLossDonut";
 import SessionCandles from "@/components/charts/SessionCandles";
 import DailyBars from "@/components/charts/DailyBars";
 
+
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase.client";
 import { listenAllTrades, listenCashflows, listenUser, saveOnboarding } from "@/lib/firestore";
