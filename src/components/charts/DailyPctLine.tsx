@@ -25,12 +25,12 @@ export default function DailyPctLine({ data }: { data: Point[] }) {
             <CartesianGrid strokeDasharray="3 3" opacity={0.2} />
             <XAxis dataKey="key" />
             <YAxis
-              tickFormatter={(x) => `${x}%`}
+              tickFormatter={(x: number) => `${x}%`}
               domain={["auto", "auto"]}
             />
             <ReferenceLine y={0} strokeOpacity={0.5} />
             <Tooltip
-              formatter={(v: any) => [`${(v as number).toFixed(2)}%`, "Acumulado"]}
+              formatter={(v: number) => [`${v.toFixed(2)}%`, "Acumulado"]}
               labelFormatter={(label) => `Dia ${label}`}
             />
             <Line type="monotone" dataKey="v" dot={false} />
@@ -38,7 +38,7 @@ export default function DailyPctLine({ data }: { data: Point[] }) {
         </ResponsiveContainer>
       </div>
       <p className="small text-sub mt-2">
-        Linha do % acumulado do mês (soma dos PnL até ao dia, / saldo inicial × 100).
+        Linha do % acumulado do mês (soma dos PnL até ao dia, dividido pelo saldo inicial × 100).
       </p>
     </div>
   );
