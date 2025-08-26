@@ -338,6 +338,7 @@ function DashboardContent({
           y={viewYear}
           m={viewMonth}
           daily={daily}
+          tradesByDay={byDay} 
           currency={user.currency}
           onPrev={() => {
             let y = viewYear,
