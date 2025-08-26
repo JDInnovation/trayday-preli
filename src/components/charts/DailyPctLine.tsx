@@ -31,7 +31,7 @@ export default function DailyPctLine({ data }: { data: Point[] }) {
             <ReferenceLine y={0} strokeOpacity={0.5} />
             <Tooltip
               formatter={(v: number) => [`${v.toFixed(2)}%`, "Acumulado"]}
-              labelFormatter={(label) => `Dia ${label}`}
+              labelFormatter={(label: string | number) => `Dia ${label}`}
             />
             <Line type="monotone" dataKey="v" dot={false} />
           </LineChart>
