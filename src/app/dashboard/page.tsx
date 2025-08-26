@@ -17,6 +17,9 @@ import WinLossDonut from "@/components/charts/WinLossDonut";
 import SessionCandles from "@/components/charts/SessionCandles";
 import DailyBars from "@/components/charts/DailyBars";
 
+// 👇 NOVOS
+import TradeCandles from "@/components/charts/TradeCandles";
+import DailyPctLine from "@/components/charts/DailyPctLine";
 
 import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase.client";
@@ -223,6 +226,38 @@ function DashboardContent({
     return { m, pnl, trades: list.length, winRate: wr };
   });
 
+  // 👇 NOVO: dataset das “velas por trade” (assente em PnL de cada trade) com acumulado open/close
+  const tradeCandles = useMemo(() => {
+    let cum = 0;
+    return tradesClosedMonth.map((t, i) => {
+      const pnl = t.pnl || 0;
+      const open = cum;
+      const close = cum + pnl;
+      const high = Math.max(open, close);
+      const low = Math.min(open, close);
+      cum = close;
+      return {
+        key: String(i + 1).padStart(2, "0"),
+        pnl,
+        open,
+        close,
+        high,
+        low,
+        date: t.closedAt!,
+      };
+    });
+  }, [tradesClosedMonth]);
+
+  // 👇 NOVO: dataset do % acumulado por dia (usa daily.pctCumul)
+  const dailyPctLine = useMemo(
+    () =>
+      daily.map((d, i) => ({
+        key: String(i + 1).padStart(2, "0"),
+        v: d.pctCumul,
+      })),
+    [daily]
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <HeaderBar />
@@ -285,10 +320,16 @@ function DashboardContent({
       {/* Trades */}
       <TradesTable trades={trades} />
 
-      {/* Extra charts */}
+      {/* Extra charts (já existentes) */}
       <div className="grid md:grid-cols-2 gap-3">
         <SessionCandles data={daily.map((d) => ({ key: d.key.slice(-2), pnl: d.pnl }))} />
         <DailyBars data={daily.map((d) => ({ key: d.key.slice(-2), pnl: d.pnl }))} />
+      </div>
+
+      {/* 👇 NOVO: gráficos adicionais “logo por baixo” dos atuais */}
+      <div className="grid md:grid-cols-2 gap-3">
+        <TradeCandles data={tradeCandles} currency={user.currency} />
+        <DailyPctLine data={dailyPctLine} />
       </div>
 
       {/* Calendar */}
