@@ -33,6 +33,7 @@ import { listenAllTrades, listenCashflows, listenUser, saveOnboarding } from "@/
 import { Cashflow, Trade, UserDoc } from "@/lib/types";
 import { endOfMonth, monthLabel, startOfMonth, ymd, fmtMoney, daysInMonth } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
+import { Activity, BarChart2, Calendar, Download, Gauge, LineChart, PieChart } from "lucide-react";
 
 export default function DashboardPage() {
   return (
@@ -67,22 +68,32 @@ function DashboardInner() {
     return () => { offU(); offT(); offC(); };
   }, [uid]);
 
-  if (!uid) return <div className="card">A iniciar sessão…</div>;
-  if (!user) return <div className="card">A carregar…</div>;
+  if (!uid) return <div className="card container-padded">A iniciar sessão…</div>;
+  if (!user) return <div className="card container-padded">A carregar…</div>;
   if (needsOnboarding) {
     return (
-      <Onboarding
-        currencyDefault={user.currency}
-        onSave={async (val, cur) => {
-          await saveOnboarding(uid!, val, cur);
-          setNeedsOnboarding(false);
-        }}
-      />
+      <div className="container-padded">
+        <Onboarding
+          currencyDefault={user.currency}
+          onSave={async (val, cur) => {
+            await saveOnboarding(uid!, val, cur);
+            setNeedsOnboarding(false);
+          }}
+        />
+      </div>
     );
   }
 
-  return <DashboardContent user={user} trades={trades} cashflows={cashflows} />;
+  return (
+    <div className="container-padded">
+      <DashboardContent user={user} trades={trades} cashflows={cashflows} />
+    </div>
+  );
 }
+
+/* ===========================
+   CONTENT
+   =========================== */
 
 function DashboardContent({
   user,
@@ -101,7 +112,7 @@ function DashboardContent({
   const s = startOfMonth(viewYear, viewMonth);
   const e = endOfMonth(viewYear, viewMonth);
 
-  // --- Fechadas do mês (mantemos para resumos mensais/exports)
+  // --- Fechadas do mês
   const tradesClosedMonth = useMemo(
     () =>
       trades
@@ -115,9 +126,7 @@ function DashboardContent({
     [trades, s, e]
   );
 
-  // Win/Loss do mês (para MonthSummary etc.)
   const wins = tradesClosedMonth.filter((t) => (t.pnl || 0) >= 0).length;
-  const losses = tradesClosedMonth.length - wins;
 
   const totalDays = daysInMonth(viewYear, viewMonth);
   const byDay: Record<string, Trade[]> = useMemo(() => {
@@ -185,58 +194,7 @@ function DashboardContent({
       `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`
     ] || 0;
 
-  const growthPct =
-    user.startingBalance! > 0
-      ? ((user.currentBalance! - user.startingBalance!) / user.startingBalance!) * 100
-      : 0;
-  const maxPerTrade = 0.03 * (user.currentBalance || 0);
-  const maxPerDay = 0.09 * (user.currentBalance || 0);
-  const dayGoal = 0.15 * (user.currentBalance || 0);
-
-  const months = Array.from({ length: 12 }, (_, m) => {
-    const ms = startOfMonth(viewYear, m).getTime(),
-      me = endOfMonth(viewYear, m).getTime();
-    const list = trades.filter(
-      (t) => t.status === "closed" && t.closedAt! >= ms && t.closedAt! <= me
-    );
-    const pnl = list.reduce((a, t) => a + (t.pnl || 0), 0);
-    const wr = list.length
-      ? (list.filter((t) => (t.pnl || 0) >= 0).length / list.length) * 100
-      : 0;
-    return { m, pnl, trades: list.length, winRate: wr };
-  });
-
-  const tradeCandles = useMemo(() => {
-    let cum = 0;
-    return tradesClosedMonth.map((t, i) => {
-      const pnl = t.pnl || 0;
-      const open = cum;
-      const close = cum + pnl;
-      const high = Math.max(open, close);
-      const low = Math.min(open, close);
-      cum = close;
-      return {
-        key: String(i + 1).padStart(2, "0"),
-        pnl,
-        open,
-        close,
-        high,
-        low,
-        date: t.closedAt!,
-      };
-    });
-  }, [tradesClosedMonth]);
-
-  const dailyPctLine = useMemo(
-    () =>
-      daily.map((d, i) => ({
-        key: String(i + 1).padStart(2, "0"),
-        v: d.pctCumul,
-      })),
-    [daily]
-  );
-
-  // ---------- TIMEFRAME + 10 KPIs ----------
+  // ---------- TIMEFRAME + KPIs ----------
   const [tf, setTf] = useState<Timeframe>(() => {
     const start = new Date(new Date().getFullYear(), new Date().getMonth(), 1, 0, 0, 0, 0);
     const end = new Date(new Date().getFullYear(), new Date().getMonth() + 1, 0, 23, 59, 59, 999);
@@ -248,7 +206,7 @@ function DashboardContent({
     [trades, cashflows, tf, user.startingBalance, user.currentBalance]
   );
 
-  // ---------- NOVO: ajustar os 2 gráficos ao timeframe ----------
+  // ---------- Gráficos que seguem o timeframe ----------
   const tradesClosedTF = useMemo(
     () =>
       trades
@@ -280,163 +238,303 @@ function DashboardContent({
   );
   const tfLosses = tradesClosedTF.length - tfWins;
 
+  // ---------- UI ----------
+  const monthLbl = monthLabel(viewYear, viewMonth);
+
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-6">
       <HeaderBar />
 
-      {/* Faixa superior: 3 cards de altura igual (sem espaços) */}
-      <div className="grid md:grid-cols-3 gap-3 items-stretch">
-        <TodayPulse trades={trades} currency={user.currency} />
-        <RiskProgress trades={trades} balance={user.currentBalance || 0} currency={user.currency} />
-        <div className="card h-full flex items-center justify-center">
-          <BalanceChip balance={user.currentBalance || 0} currency={user.currency} />
-        </div>
-      </div>
-
-      {/* Selector de Timeframe */}
-      <TimeframeSelector onChange={setTf} initialMode="month" />
-
-      {/* 10 KPIs com modal por KPI */}
-      <KpiGrid
-        kpis={kpis.map((k) => ({
-          ...k,
-          value:
-            typeof k.value === "number" && ["pnl", "expectancy", "avgPerSession", "maxDD"].includes(k.key)
-              ? parseFloat((k.value as number).toFixed(2))
-              : k.value,
-          suffix: k.key === "retPct" || k.key === "winRate" ? "%" : k.suffix,
-        }))}
-        charts={charts}
-        currency={user.currency}
-      />
-
-      {/* Charts topo — AGORA seguem o timeframe */}
-      <div className="grid md:grid-cols-2 gap-3">
-        <PnlMonthLine data={tfSeries} />
-        <WinLossDonut wins={tfWins} losses={tfLosses} />
-      </div>
-
-      {/* Order + Cashflows */}
-      <OrderForm balance={user.currentBalance || 0} currency={user.currency} />
-      <CashflowsCard cashflows={cashflows} currency={user.currency} />
-
-      {/* Trades */}
-      <TradesTable trades={trades} />
-
-      {/* Extra charts */}
-      <div className="grid md:grid-cols-2 gap-3">
-        <SessionCandles data={daily.map((d) => ({ key: d.key.slice(-2), pnl: d.pnl }))} />
-        <DailyBars data={daily.map((d) => ({ key: d.key.slice(-2), pnl: d.pnl }))} />
-      </div>
-
-      {/* Gráficos novos */}
-      <div className="grid md:grid-cols-2 gap-3">
-        <TradeCandles data={tradeCandles} currency={user.currency} />
-        <DailyPctLine data={dailyPctLine} />
-      </div>
-
-      {/* Calendar */}
-      {!annualMode ? (
-        <CalendarMonth
-          y={viewYear}
-          m={viewMonth}
-          daily={daily}
-          tradesByDay={byDay}
-          currency={user.currency}
-          onPrev={() => {
-            let y = viewYear, m = viewMonth - 1;
-            if (m < 0) { m = 11; y--; }
-            setViewYear(y); setViewMonth(m);
-          }}
-          onNext={() => {
-            let y = viewYear, m = viewMonth + 1;
-            if (m > 11) { m = 0; y++; }
-            setViewYear(y); setViewMonth(m);
-          }}
-          onPickMonth={(y, m) => { setViewYear(y); setViewMonth(m); }}
-          onAnnual={() => { setAnnualYear(viewYear); setAnnualMode(true); }}
-        />
-      ) : null}
-
-      {/* Month summary */}
-      {!annualMode ? (
-        <MonthSummary
-          monthLabel={monthLabel(viewYear, viewMonth)}
-          currency={user.currency}
-          monthPnL={monthPnL}
-          monthPct={monthPct}
-          monthWinRate={monthWinRate}
-          totalTrades={daily.reduce((a, d) => a + d.trades, 0)}
-          best={best ? `${best.key} (${best.pnl.toFixed(2)})` : "—"}
-          worst={worst ? `${worst.key} (${worst.pnl.toFixed(2)})` : "—"}
-          avgPerTrade={totalTradesInMonth ? monthPnL / totalTradesInMonth : 0}
-          daysLeft={isCurrent ? Math.max(0, Math.ceil((e.getTime() - new Date().getTime()) / 86400000)) : 0}
-        />
-      ) : null}
-
-      {/* Payout */}
-      {!annualMode ? (
-        <PayoutCard
-          y={viewYear}
-          m={viewMonth}
-          currency={user.currency}
-          monthPnL={monthPnL}
-          daysLeft={isCurrent ? Math.max(0, Math.ceil((e.getTime() - new Date().getTime()) / 86400000)) : 0}
-          monthsStats={{
-            expenses,
-            sessionsSoFar: daily.filter((d) => d.hasTrades).length,
-            daysElapsed: daily.length,
-            sessionRate: daily.filter((d) => d.hasTrades).length / daily.length,
-          }}
-        />
-      ) : null}
-
-      {/* Exports */}
-      <ExportsCard
-        year={viewYear}
-        month={viewMonth}
-        currency={user.currency}
-        user={{ startingBalance: user.startingBalance || 0, currentBalance: user.currentBalance || 0 }}
-        monthLabel={monthLabel(viewYear, viewMonth)}
-        monthPnL={monthPnL}
-        expenses={expenses}
-        winRate={monthWinRate}
-        daysLeft={isCurrent ? Math.max(0, Math.ceil((e.getTime() - new Date().getTime()) / 86400000)) : 0}
-        daily={daily.map((d) => ({
-          key: d.key, trades: d.trades, pnl: d.pnl, pctCumul: d.pctCumul, dd: d.dd, hasTrades: d.hasTrades,
-        }))}
-        trades={trades}
-        cashflows={cashflows}
-      />
-
-      {/* Annual mode */}
-      {annualMode && (
-        <div className="card">
-          <AnnualSwitch
-            y={annualYear}
-            months={Array.from({ length: 12 }, (_, m) => {
-              const ms = startOfMonth(annualYear, m).getTime();
-              const me = endOfMonth(annualYear, m).getTime();
-              const list = trades.filter(
-                (t) => t.status === "closed" && t.closedAt! >= ms && t.closedAt! <= me
-              );
-              const pnl = list.reduce((a, t) => a + (t.pnl || 0), 0);
-              const wr = list.length
-                ? (list.filter((t) => (t.pnl || 0) >= 0).length / list.length) * 100
-                : 0;
-              return { m, pnl, trades: list.length, winRate: wr };
-            })}
-            currency={user.currency}
-            onBack={() => setAnnualMode(false)}
-            onPrevYear={() => setAnnualYear((y) => y - 1)}
-            onNextYear={() => setAnnualYear((y) => y + 1)}
-            onPickYear={(y: number) => setAnnualYear(y)}
+      {/* Nav secundária + Timeframe sticky */}
+      <div className="sticky top-2 z-30">
+        <div className="card flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+          <AnchorNav
+            items={[
+              { href: "#overview", label: "Visão rápida", icon: <Activity className="h-4 w-4" /> },
+              { href: "#kpis", label: "KPIs", icon: <Gauge className="h-4 w-4" /> },
+              { href: "#charts", label: "Gráficos", icon: <LineChart className="h-4 w-4" /> },
+              { href: "#records", label: "Registos", icon: <BarChart2 className="h-4 w-4" /> },
+              { href: "#calendar", label: "Calendário", icon: <Calendar className="h-4 w-4" /> },
+              { href: "#exports", label: "Exportar", icon: <Download className="h-4 w-4" /> },
+            ]}
           />
+          <div className="min-w-[260px]">
+            <TimeframeSelector onChange={setTf} initialMode="month" />
+          </div>
         </div>
-      )}
+      </div>
+
+      {/* Overview */}
+      <section id="overview" className="flex flex-col gap-3">
+        <SectionHeading
+          title="Visão rápida"
+          subtitle="Sessão atual, risco e saldo"
+          icon={<Activity className="h-5 w-5" />}
+          right={<span className="badge">{monthLbl}</span>}
+        />
+        <div className="grid md:grid-cols-3 gap-3 items-stretch">
+          <TodayPulse trades={trades} currency={user.currency} />
+          <RiskProgress trades={trades} balance={user.currentBalance || 0} currency={user.currency} />
+          <div className="card h-full flex items-center justify-center">
+            <BalanceChip balance={user.currentBalance || 0} currency={user.currency} />
+          </div>
+        </div>
+      </section>
+
+      {/* KPIs */}
+      <section id="kpis" className="flex flex-col gap-3">
+        <SectionHeading
+          title="KPIs"
+          subtitle="10 indicadores com gráficos dedicados"
+          icon={<Gauge className="h-5 w-5" />}
+        />
+        <KpiGrid
+          kpis={kpis.map((k) => ({
+            ...k,
+            value:
+              typeof k.value === "number" && ["pnl", "expectancy", "avgPerSession", "maxDD"].includes(k.key)
+                ? parseFloat((k.value as number).toFixed(2))
+                : k.value,
+            suffix: k.key === "retPct" || k.key === "winRate" ? "%" : k.suffix,
+          }))}
+          charts={charts}
+          currency={user.currency}
+        />
+      </section>
+
+      {/* Charts topo — seguem timeframe */}
+      <section id="charts" className="flex flex-col gap-3">
+        <SectionHeading
+          title="Gráficos principais"
+          subtitle="Evolução e distribuição"
+          icon={<LineChart className="h-5 w-5" />}
+        />
+        <div className="grid md:grid-cols-2 gap-3">
+          <PnlMonthLine data={tfSeries} />
+          <WinLossDonut wins={tfWins} losses={tfLosses} />
+        </div>
+        <div className="grid md:grid-cols-2 gap-3">
+          <SessionCandles data={daily.map((d) => ({ key: d.key.slice(-2), pnl: d.pnl }))} />
+          <DailyBars data={daily.map((d) => ({ key: d.key.slice(-2), pnl: d.pnl }))} />
+        </div>
+        <div className="grid md:grid-cols-2 gap-3">
+          <TradeCandles
+            data={useMemo(() => {
+              let cum = 0;
+              return tradesClosedMonth.map((t, i) => {
+                const pnl = t.pnl || 0;
+                const open = cum;
+                const close = cum + pnl;
+                const high = Math.max(open, close);
+                const low = Math.min(open, close);
+                cum = close;
+                return {
+                  key: String(i + 1).padStart(2, "0"),
+                  pnl,
+                  open,
+                  close,
+                  high,
+                  low,
+                  date: t.closedAt!,
+                };
+              });
+            }, [tradesClosedMonth])}
+            currency={user.currency}
+          />
+          <DailyPctLine data={daily.map((d, i) => ({ key: String(i + 1).padStart(2, "0"), v: d.pctCumul }))} />
+        </div>
+      </section>
+
+      {/* Registos */}
+      <section id="records" className="flex flex-col gap-3">
+        <SectionHeading
+          title="Registos"
+          subtitle="Abertura de trade e movimentos da conta"
+          icon={<PieChart className="h-5 w-5" />}
+        />
+        <div className="grid md:grid-cols-2 gap-3">
+          <OrderForm balance={user.currentBalance || 0} currency={user.currency} />
+          <CashflowsCard cashflows={cashflows} currency={user.currency} />
+        </div>
+
+        <div className="mt-1">
+          <SectionSubheading title="Trades" />
+          <TradesTable trades={trades} />
+        </div>
+      </section>
+
+      {/* Calendário e Resumo */}
+      <section id="calendar" className="flex flex-col gap-3">
+        <SectionHeading
+          title="Calendário & resumo do mês"
+          subtitle="Sessões, desempenho diário e síntese"
+          icon={<Calendar className="h-5 w-5" />}
+        />
+        {!annualMode ? (
+          <CalendarMonth
+            y={viewYear}
+            m={viewMonth}
+            daily={daily}
+            tradesByDay={byDay}
+            currency={user.currency}
+            onPrev={() => {
+              let y = viewYear, m = viewMonth - 1;
+              if (m < 0) { m = 11; y--; }
+              setViewYear(y); setViewMonth(m);
+            }}
+            onNext={() => {
+              let y = viewYear, m = viewMonth + 1;
+              if (m > 11) { m = 0; y++; }
+              setViewYear(y); setViewMonth(m);
+            }}
+            onPickMonth={(y, m) => { setViewYear(y); setViewMonth(m); }}
+            onAnnual={() => { setAnnualYear(viewYear); setAnnualMode(true); }}
+          />
+        ) : null}
+
+        {!annualMode ? (
+          <MonthSummary
+            monthLabel={monthLbl}
+            currency={user.currency}
+            monthPnL={monthPnL}
+            monthPct={monthPct}
+            monthWinRate={monthWinRate}
+            totalTrades={daily.reduce((a, d) => a + d.trades, 0)}
+            best={best ? `${best.key} (${best.pnl.toFixed(2)})` : "—"}
+            worst={worst ? `${worst.key} (${worst.pnl.toFixed(2)})` : "—"}
+            avgPerTrade={totalTradesInMonth ? monthPnL / totalTradesInMonth : 0}
+            daysLeft={isCurrent ? Math.max(0, Math.ceil((e.getTime() - new Date().getTime()) / 86400000)) : 0}
+          />
+        ) : null}
+
+        {!annualMode ? (
+          <PayoutCard
+            y={viewYear}
+            m={viewMonth}
+            currency={user.currency}
+            monthPnL={monthPnL}
+            daysLeft={isCurrent ? Math.max(0, Math.ceil((e.getTime() - new Date().getTime()) / 86400000)) : 0}
+            monthsStats={{
+              expenses,
+              sessionsSoFar: daily.filter((d) => d.hasTrades).length,
+              daysElapsed: daily.length,
+              sessionRate: daily.filter((d) => d.hasTrades).length / daily.length,
+            }}
+          />
+        ) : null}
+
+        {annualMode && (
+          <div className="card">
+            <AnnualSwitch
+              y={annualYear}
+              months={Array.from({ length: 12 }, (_, m) => {
+                const ms = startOfMonth(annualYear, m).getTime();
+                const me = endOfMonth(annualYear, m).getTime();
+                const list = trades.filter(
+                  (t) => t.status === "closed" && t.closedAt! >= ms && t.closedAt! <= me
+                );
+                const pnl = list.reduce((a, t) => a + (t.pnl || 0), 0);
+                const wr = list.length
+                  ? (list.filter((t) => (t.pnl || 0) >= 0).length / list.length) * 100
+                  : 0;
+                return { m, pnl, trades: list.length, winRate: wr };
+              })}
+              currency={user.currency}
+              onBack={() => setAnnualMode(false)}
+              onPrevYear={() => setAnnualYear((y) => y - 1)}
+              onNextYear={() => setAnnualYear((y) => y + 1)}
+              onPickYear={(y: number) => setAnnualYear(y)}
+            />
+          </div>
+        )}
+      </section>
+
+      {/* Exportações */}
+      <section id="exports" className="flex flex-col gap-3">
+        <SectionHeading
+          title="Exportações"
+          subtitle="CSV, texto, PDF e cópia rápida"
+          icon={<Download className="h-5 w-5" />}
+        />
+        <ExportsCard
+          year={viewYear}
+          month={viewMonth}
+          currency={user.currency}
+          user={{ startingBalance: user.startingBalance || 0, currentBalance: user.currentBalance || 0 }}
+          monthLabel={monthLbl}
+          monthPnL={monthPnL}
+          expenses={expenses}
+          winRate={monthWinRate}
+          daysLeft={isCurrent ? Math.max(0, Math.ceil((e.getTime() - new Date().getTime()) / 86400000)) : 0}
+          daily={daily.map((d) => ({
+            key: d.key, trades: d.trades, pnl: d.pnl, pctCumul: d.pctCumul, dd: d.dd, hasTrades: d.hasTrades,
+          }))}
+          trades={trades}
+          cashflows={cashflows}
+        />
+      </section>
     </div>
   );
 }
+
+/* ===========================
+   AUX COMPONENTS (UI)
+   =========================== */
+
+function AnchorNav({
+  items,
+}: {
+  items: { href: string; label: string; icon?: React.ReactNode }[];
+}) {
+  return (
+    <nav className="flex flex-wrap gap-2">
+      {items.map((it) => (
+        <a key={it.href} href={it.href} className="chip hover:opacity-100">
+          {it.icon}
+          <span>{it.label}</span>
+        </a>
+      ))}
+    </nav>
+  );
+}
+
+function SectionHeading({
+  title,
+  subtitle,
+  icon,
+  right,
+}: {
+  title: string;
+  subtitle?: string;
+  icon?: React.ReactNode;
+  right?: React.ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-3">
+      <div className="flex items-center gap-3">
+        {icon ? <div className="icon-btn">{icon}</div> : null}
+        <div>
+          <h3 className="text-lg md:text-xl font-semibold leading-tight">{title}</h3>
+          {subtitle ? <div className="small">{subtitle}</div> : null}
+        </div>
+      </div>
+      {right ? <div>{right}</div> : null}
+    </div>
+  );
+}
+
+function SectionSubheading({ title }: { title: string }) {
+  return (
+    <div className="flex items-center gap-2 mb-2">
+      <div className="w-1.5 h-5 rounded-full" style={{ background: "var(--brand)" }} />
+      <div className="small uppercase tracking-wide">{title}</div>
+    </div>
+  );
+}
+
+/* ===========================
+   ANNUAL SWITCH WRAPPER
+   =========================== */
 
 function AnnualSwitch(props: any) {
   const { y, months, currency, onBack, onPrevYear, onNextYear, onPickYear } = props;
@@ -453,6 +551,10 @@ function AnnualSwitch(props: any) {
     />
   );
 }
+
+/* ===========================
+   ONBOARDING
+   =========================== */
 
 function Onboarding({
   currencyDefault,

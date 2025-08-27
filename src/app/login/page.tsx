@@ -2,124 +2,337 @@
 export const dynamic = "force-dynamic";
 export const revalidate = 0;
 
-import { useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { signInWithEmailAndPassword, createUserWithEmailAndPassword } from "firebase/auth";
+import {
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  sendPasswordResetEmail,
+} from "firebase/auth";
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
 import { auth, db } from "@/lib/firebase.client";
+import {
+  CheckCircle2,
+  ShieldCheck,
+  BarChart2,
+  Calendar,
+  LineChart,
+  Download,
+  ArrowRight,
+  Mail,
+  Lock,
+  Eye,
+  EyeOff,
+} from "lucide-react";
+
+function mapAuthError(e: any): string {
+  const code = (e?.code || "").toString();
+  switch (code) {
+    case "auth/invalid-email":
+      return "Email inválido.";
+    case "auth/user-not-found":
+    case "auth/wrong-password":
+      return "Credenciais inválidas.";
+    case "auth/too-many-requests":
+      return "Muitas tentativas. Tenta de novo mais tarde.";
+    case "auth/email-already-in-use":
+      return "Este email já está registado.";
+    case "auth/weak-password":
+      return "Password fraca (mín. 6 caracteres).";
+    case "auth/network-request-failed":
+      return "Sem ligação de rede. Verifica a tua internet.";
+    default:
+      return e?.message || "Ocorreu um erro. Tenta novamente.";
+  }
+}
 
 export default function LoginPage() {
   const [mode, setMode] = useState<"login" | "signup">("login");
   const [email, setEmail] = useState("");
   const [pass, setPass] = useState("");
   const [pass2, setPass2] = useState("");
-  const [err, setErr] = useState<string>("");
+  const [showPass, setShowPass] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState<string>("");
+  const [info, setInfo] = useState<string>("");
   const router = useRouter();
 
-  const onSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setErr("");
-    setLoading(true);
-    try {
-      if (mode === "login") {
-        await signInWithEmailAndPassword(auth, email.trim(), pass);
-      } else {
-        if (pass !== pass2) throw new Error("As passwords não coincidem.");
-        const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+  const subtitle = useMemo(
+    () =>
+      mode === "login"
+        ? "Bem-vindo de volta. Continua a tua evolução com análises em tempo real."
+        : "Cria a tua conta  em segundos. Onboarding simples: saldo inicial e moeda.",
+    [mode]
+  );
 
-        // cria/atualiza o documento do utilizador (mínimo necessário)
-        await setDoc(
-          doc(db, "users", cred.user.uid),
-          {
-            email: cred.user.email,
-            currency: "EUR",            // default; pode mudar no onboarding
-            startingBalance: null,      // será pedido no onboarding
-            currentBalance: null,       // idem
-            createdAt: serverTimestamp()
-          },
-          { merge: true }
-        );
+  const onSubmit = useCallback(
+    async (e: React.FormEvent) => {
+      e.preventDefault();
+      setErr("");
+      setInfo("");
+      setLoading(true);
+      try {
+        if (mode === "login") {
+          await signInWithEmailAndPassword(auth, email.trim(), pass);
+        } else {
+          if (pass !== pass2) throw new Error("As passwords não coincidem.");
+          const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
+          // documento base do utilizador
+          await setDoc(
+            doc(db, "users", cred.user.uid),
+            {
+              email: cred.user.email,
+              currency: "EUR",
+              startingBalance: null,
+              currentBalance: null,
+              createdAt: serverTimestamp(),
+            },
+            { merge: true }
+          );
+        }
+        router.push("/dashboard");
+      } catch (e: any) {
+        setErr(mapAuthError(e));
+      } finally {
+        setLoading(false);
       }
-      router.push("/dashboard");
-    } catch (e: any) {
-      setErr(e?.message || "Ocorreu um erro. Tenta novamente.");
-    } finally {
-      setLoading(false);
+    },
+    [mode, email, pass, pass2, router]
+  );
+
+  const onReset = useCallback(async () => {
+    setErr("");
+    setInfo("");
+    if (!email.trim()) {
+      setErr("Introduz o teu email para recuperar a password.");
+      return;
     }
-  };
+    try {
+      await sendPasswordResetEmail(auth, email.trim());
+      setInfo("Enviámos um email de recuperação de password.");
+    } catch (e: any) {
+      setErr(mapAuthError(e));
+    }
+  }, [email]);
 
   return (
-    <div className="max-w-sm mx-auto card">
-      <h2 className="text-xl font-bold mb-2">
-        {mode === "login" ? "Entrar" : "Criar conta"}
-      </h2>
-
-      <form onSubmit={onSubmit} className="flex flex-col gap-3">
-        <div>
-          <label className="label">Email</label>
-          <input
-            className="input"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            autoComplete="email"
-            required
-          />
-        </div>
+    <main className="min-h-screen flex items-stretch">
+      {/* Coluna de apresentação / benefício (esquerda) */}
+      <section className="hidden lg:flex flex-1 flex-col justify-between p-8">
+        <header className="flex items-center gap-3">
+          
+          <span className="font-semibold tracking-tight">TradeWay.com</span>
+        </header>
 
         <div>
-          <label className="label">Password</label>
-          <input
-            className="input"
-            type="password"
-            value={pass}
-            onChange={(e) => setPass(e.target.value)}
-            autoComplete={mode === "login" ? "current-password" : "new-password"}
-            minLength={6}
-            required
-          />
-        </div>
+          <h1 className="text-4xl xl:text-5xl font-extrabold leading-[1.1] mb-3">
+            O teu cockpit de <span className="text-ok">performance</span> em trading.
+          </h1>
+          <p className="text-lg text-sub max-w-2xl">
+            KPIs accionáveis, calendário de sessões, gestão de risco e exportações
+            num só lugar. Constrói consistência com métricas reais e controlo total.
+          </p>
 
-        {mode === "signup" && (
-          <div>
-            <label className="label">Confirmar password</label>
-            <input
-              className="input"
-              type="password"
-              value={pass2}
-              onChange={(e) => setPass2(e.target.value)}
-              autoComplete="new-password"
-              minLength={6}
-              required
+          {/* Highlights */}
+          <div className="mt-8 grid grid-cols-3 gap-3 max-w-3xl">
+            <Feature
+              icon={<BarChart2 className="h-4 w-4" />}
+              title="KPIs em tempo real"
+              desc="10 métricas chave com gráficos dedicados."
             />
-            <p className="small mt-1">
-              Depois do registo pedimos o <b>saldo inicial</b> e moeda no onboarding.
-            </p>
+            <Feature
+              icon={<Calendar className="h-4 w-4" />}
+              title="Sessões & calendário"
+              desc="Resultados por dia e por trade."
+            />
+            <Feature
+              icon={<Download className="h-4 w-4" />}
+              title="Exportações & payout"
+              desc="CSV, texto e simulação de levantamentos."
+            />
           </div>
-        )}
 
-        {err && <div className="text-danger text-sm">{err}</div>}
+          {/* Trust row */}
+          <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-sub">
+            <span className="inline-flex items-center gap-1.5">
+              <ShieldCheck className="h-4 w-4" />
+              Firebase Auth & Firestore
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4" />
+              Sem lock-in • Exporta tudo
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <CheckCircle2 className="h-4 w-4" />
+              Grátis para começar
+            </span>
+          </div>
+        </div>
 
-        <button className="btn mt-2" disabled={loading}>
-          {loading ? (mode === "login" ? "A entrar..." : "A criar…") : (mode === "login" ? "Entrar" : "Criar conta")}
-        </button>
-      </form>
+        <footer className="text-xs text-sub">
+          © {new Date().getFullYear()} TradeWay Construído com Next.js & Firebase
+        </footer>
+      </section>
 
-      <div className="flex items-center justify-between mt-3">
-        <span className="small">
-          {mode === "login" ? "Ainda não tens conta?" : "Já tens conta?"}
-        </span>
-        <button
-          className="btn-ghost"
-          onClick={() => {
-            setErr("");
-            setMode(mode === "login" ? "signup" : "login");
-          }}
-        >
-          {mode === "login" ? "Criar conta" : "Entrar"}
-        </button>
+      {/* Coluna do formulário (direita) */}
+      <section className="flex-1 flex items-center justify-center p-6 lg:p-10">
+        <div className="w-full max-w-md">
+          <div className="card">
+            <div className="mb-3">
+              <h2 className="text-2xl font-bold">{
+                mode === "login" ? "Entrar" : "Criar conta"
+              }</h2>
+              <p className="small mt-1">{subtitle}</p>
+            </div>
+
+            <form className="flex flex-col gap-3" onSubmit={onSubmit}>
+              <div>
+                <label className="label">Email</label>
+                <div className="flex items-center gap-2">
+                  <div className="icon-btn" aria-hidden>
+                    <Mail className="h-4 w-4" />
+                  </div>
+                  <input
+                    className="input w-full"
+                    type="email"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    autoComplete="email"
+                    required
+                    placeholder="tu@email.com"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="label">Password</label>
+                <div className="flex items-center gap-2">
+                  <div className="icon-btn" aria-hidden>
+                    <Lock className="h-4 w-4" />
+                  </div>
+                  <input
+                    className="input w-full"
+                    type={showPass ? "text" : "password"}
+                    value={pass}
+                    onChange={(e) => setPass(e.target.value)}
+                    autoComplete={mode === "login" ? "current-password" : "new-password"}
+                    minLength={6}
+                    required
+                    placeholder="••••••••"
+                  />
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    aria-label={showPass ? "Ocultar password" : "Mostrar password"}
+                    onClick={() => setShowPass((s) => !s)}
+                  >
+                    {showPass ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {mode === "signup" && (
+                <div>
+                  <label className="label">Confirmar password</label>
+                  <input
+                    className="input w-full"
+                    type="password"
+                    value={pass2}
+                    onChange={(e) => setPass2(e.target.value)}
+                    autoComplete="new-password"
+                    minLength={6}
+                    required
+                    placeholder="repete a password"
+                  />
+                  <p className="small mt-1">
+                    Após registo, pedimos o <b>saldo inicial</b> e a <b>moeda</b>.
+                  </p>
+                </div>
+              )}
+
+              {(err || info) && (
+                <div className={`${err ? "text-danger" : "text-ok"} text-sm`}>
+                  {err || info}
+                </div>
+              )}
+
+              <button className="btn btn-primary mt-1" disabled={loading}>
+                {loading ? (
+                  mode === "login" ? "A entrar…" : "A criar…"
+                ) : (
+                  <span className="inline-flex items-center gap-2">
+                    {mode === "login" ? "Entrar" : "Criar conta"}
+                    <ArrowRight className="h-4 w-4" />
+                  </span>
+                )}
+              </button>
+            </form>
+
+            {/* Ações secundárias */}
+            <div className="mt-3 flex items-center justify-between">
+              <button
+                type="button"
+                onClick={onReset}
+                className="btn-ghost"
+              >
+                Esqueceste a password?
+              </button>
+              <button
+                type="button"
+                className="btn-ghost"
+                onClick={() => {
+                  setErr("");
+                  setInfo("");
+                  setMode((m) => (m === "login" ? "signup" : "login"));
+                }}
+              >
+                {mode === "login" ? "Criar conta" : "Já tenho conta"}
+              </button>
+            </div>
+          </div>
+
+          {/* Mini “faixa” de benefícios em mobile */}
+          <div className="mt-6 grid grid-cols-2 gap-3 lg:hidden">
+            <MiniBadge icon={<BarChart2 className="h-4 w-4" />} text="KPIs em tempo real" />
+            <MiniBadge icon={<Calendar className="h-4 w-4" />} text="Calendário de sessões" />
+            <MiniBadge icon={<LineChart className="h-4 w-4" />} text="Controlo de risco" />
+            <MiniBadge icon={<Download className="h-4 w-4" />} text="Exportações & payout" />
+          </div>
+        </div>
+      </section>
+    </main>
+  );
+}
+
+function Feature({
+  icon,
+  title,
+  desc,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  desc: string;
+}) {
+  return (
+    <div className="card">
+      <div className="flex items-start gap-3">
+        <div className="icon-btn" aria-hidden>
+          {icon}
+        </div>
+        <div>
+          <div className="font-semibold leading-tight">{title}</div>
+          <div className="small">{desc}</div>
+        </div>
       </div>
+    </div>
+  );
+}
+
+function MiniBadge({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <div className="badge w-full justify-center">
+      {icon}
+      <span>{text}</span>
     </div>
   );
 }
