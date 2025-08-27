@@ -1,6 +1,6 @@
 import { Trade, Cashflow } from "@/lib/types";
 
-// Helpers
+// Helpers gerais
 const DAY_MS = 86400000;
 function ymd(d: Date) {
   const y = d.getFullYear();
@@ -11,6 +11,42 @@ function ymd(d: Date) {
 function inRange(ts: number, start: Date, end: Date) {
   return ts >= start.getTime() && ts <= end.getTime();
 }
+
+// ------- Helpers para compatibilidade de Cashflow -------
+// Aceita várias formas de timestamp/amount/type que possam existir no teu código.
+function cfTime(c: any): number {
+  const raw =
+    c?.at ??
+    c?.ts ??
+    c?.timestamp ??
+    c?.time ??
+    (c?.createdAt && typeof c.createdAt === "object" && "toMillis" in c.createdAt
+      ? c.createdAt.toMillis()
+      : c?.createdAt) ??
+    (c?.date instanceof Date ? c.date.getTime() : c?.date);
+  if (raw == null) return 0;
+  if (typeof raw === "number") return raw;
+  const n = Number(raw);
+  return isFinite(n) ? n : 0;
+}
+
+function cfAmount(c: any): number {
+  const v = c?.amount ?? c?.value ?? 0;
+  const n = Number(v);
+  return isFinite(n) ? n : 0;
+}
+
+function cfIsDeposit(c: any): boolean {
+  const t = (c?.type ?? c?.kind ?? c?.action ?? "").toString().toLowerCase();
+  return t === "deposit" || t === "dep" || t === "in";
+}
+
+function cfIsWithdrawal(c: any): boolean {
+  const t = (c?.type ?? c?.kind ?? c?.action ?? "").toString().toLowerCase();
+  return t === "withdrawal" || t === "withdraw" || t === "wd" || t === "out";
+}
+
+// --------------------------------------------------------
 
 export type KpiKey =
   | "pnl"
@@ -34,7 +70,6 @@ export type KpiValue = {
 };
 
 export type ChartData = { x: string | number; y: number }[];
-
 export type KpiCharts = Partial<Record<KpiKey, ChartData>>;
 
 export type DailyRow = {
@@ -50,7 +85,7 @@ export type DailyRow = {
   violations: {
     tradeLossOver3: number;
     dayLossOver9: number; // 0|1
-    oversize?: number; // se conseguirmos
+    oversize?: number; // opcional se vieres a guardar oversize
   };
 };
 
@@ -62,23 +97,25 @@ export function computeKPIs(
   startingBalance: number,
   currentBalance: number
 ): { list: KpiValue[]; charts: KpiCharts } {
-  // Baseline de equity no início do período
+  // Baseline de equity antes do período
   const pnlBefore = trades
     .filter((t) => t.status === "closed" && t.closedAt && t.closedAt < start.getTime())
     .reduce((a, t) => a + (t.pnl || 0), 0);
-  const cashBefore = cashflows
-    .filter((c) => c.at < start.getTime())
-    .reduce((a, c) => a + (c.type === "deposit" ? c.amount : -c.amount), 0);
-  const equityStart = startingBalance + pnlBefore + cashBefore;
+
+  const cashBefore = (cashflows as any[])
+    .filter((c) => cfTime(c) < start.getTime())
+    .reduce((a, c) => a + (cfIsDeposit(c) ? cfAmount(c) : cfIsWithdrawal(c) ? -cfAmount(c) : 0), 0);
+
+  const equityStart = (startingBalance || 0) + pnlBefore + cashBefore;
 
   // Filtrar período
   const tradesP = trades
     .filter((t) => t.status === "closed" && t.closedAt && inRange(t.closedAt, start, end))
     .sort((a, b) => a.closedAt! - b.closedAt!);
 
-  const cashP = cashflows.filter((c) => inRange(c.at, start, end));
+  const cashP = (cashflows as any[]).filter((c) => inRange(cfTime(c), start, end));
 
-  // Série diária
+  // Série diária no período
   const days: DailyRow[] = [];
   let equity = equityStart;
   let peak = equity;
@@ -102,7 +139,7 @@ export function computeKPIs(
     if (equity > peak) peak = equity;
     const dd = equity - peak; // <= 0
 
-    // violações (aproximações seguras)
+    // Violações (aproximação usando saldo atual)
     const tradeLossOver3 = tradesDay.filter((tr) => (tr.pnl || 0) < -0.03 * (currentBalance || 0)).length;
     const dayLossOver9 = dayPnL < -0.09 * (currentBalance || 0) ? 1 : 0;
 
@@ -122,7 +159,11 @@ export function computeKPIs(
 
   // Agregados do período
   const pnl = tradesP.reduce((a, t) => a + (t.pnl || 0), 0);
-  const equityEnd = equityStart + pnl + cashP.reduce((a, c) => a + (c.type === "deposit" ? c.amount : -c.amount), 0);
+  const cashDelta = cashP.reduce(
+    (a, c) => a + (cfIsDeposit(c) ? cfAmount(c) : cfIsWithdrawal(c) ? -cfAmount(c) : 0),
+    0
+  );
+  const equityEnd = equityStart + pnl + cashDelta;
   const retPct = equityStart > 0 ? ((equityEnd - equityStart) / equityStart) * 100 : 0;
 
   const tradesCount = tradesP.length;
@@ -140,7 +181,7 @@ export function computeKPIs(
   const sessions = days.filter((d) => d.trades.length > 0);
   const avgPerSession = sessions.length ? sessions.reduce((a, d) => a + d.dayPnL, 0) / sessions.length : 0;
 
-  // Streak atual (W/L consecutivos no fim do período)
+  // Streak atual
   let streak = 0;
   let mode: "W" | "L" | null = null;
   for (let i = tradesP.length - 1; i >= 0; i--) {
@@ -157,7 +198,7 @@ export function computeKPIs(
   const riskViolations =
     days.reduce((a, d) => a + d.violations.tradeLossOver3 + d.violations.dayLossOver9 + (d.violations.oversize || 0), 0) || 0;
 
-  // Datasets para gráficos por KPI
+  // ------- Datasets para gráficos por KPI -------
   // 1) PnL acumulado por trade
   let acc = 0;
   const pnlLine: ChartData = [{ x: 0, y: 0 }];
