@@ -12,7 +12,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body className="min-h-screen">
         <div className="sticky top-0 z-10 flex items-center justify-between p-4 border-b border-line bg-bg/80 backdrop-blur">
           <div className="px-2 py-1 rounded-full border border-slate-700 text-sub font-semibold">
-            Trading Dashboard — Pro
+            TradeWay
           </div>
         </div>
         <main className="max-w-6xl mx-auto p-4">{children}</main>

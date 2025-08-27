@@ -1,68 +1,195 @@
 "use client";
 
+import { useState } from "react";
 import { addMonthExpense } from "@/lib/firestore";
 import { auth } from "@/lib/firebase.client";
 import { fmtMoney } from "@/lib/utils";
-import { useState } from "react";
+
+type Stats = {
+  expenses: number;
+  sessionsSoFar: number;
+  daysElapsed: number;
+  sessionRate: number; // 0..1 (percentagem de dias com sessão)
+};
 
 export default function PayoutCard({
-  y, m, currency, monthPnL, daysLeft, monthsStats
+  y,
+  m,
+  currency,
+  monthPnL,
+  daysLeft,
+  monthsStats,
 }: {
-  y: number; m: number; currency: string; monthPnL: number; daysLeft: number;
-  monthsStats: { expenses: number; sessionsSoFar: number; daysElapsed: number; sessionRate: number; }
+  y: number;
+  m: number;
+  currency: string;
+  monthPnL: number;
+  daysLeft: number;
+  monthsStats: Stats;
 }) {
-  const [add, setAdd] = useState("");
-
   const { expenses, sessionsSoFar, daysElapsed, sessionRate } = monthsStats;
-  const base = monthPnL - expenses;
+
+  // Cálculos principais
   const payoutRate = 0.35;
+  const base = monthPnL - expenses; // base para payout
   const payoutNow = Math.max(0, base * payoutRate);
 
-  const avgPerSession = sessionsSoFar > 0 ? (monthPnL / sessionsSoFar) : 0;
-  const expectedRemainingSessions = Math.round((sessionRate || 0) * daysLeft);
-  const projectedPnL = monthPnL + (avgPerSession * expectedRemainingSessions);
+  const avgPerSession = sessionsSoFar > 0 ? monthPnL / sessionsSoFar : 0;
+  const expectedRemainingSessions = Math.max(
+    0,
+    Math.round((sessionRate || 0) * daysLeft)
+  );
+  const projectedPnL = monthPnL + avgPerSession * expectedRemainingSessions;
   const projectedBase = projectedPnL - expenses;
   const projectedPayout = Math.max(0, projectedBase * payoutRate);
+
+  // UI: adicionar despesa
+  const [add, setAdd] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const onAddExpense = async () => {
+    const v = parseFloat(add || "");
+    if (!isFinite(v)) {
+      alert("Valor inválido");
+      return;
+    }
+    if (v < 0) {
+      alert("Usa valores positivos para despesas.");
+      return;
+    }
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      alert("Sessão expirada. Faz login novamente.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await addMonthExpense(uid, y, m, v);
+      setAdd("");
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
     <div className="card">
       <h3 className="font-bold mb-2">Payout</h3>
-      <div className="grid md:grid-cols-3 gap-3">
-        <div className="kpi">
-          <span className="title">PnL acumulado do mês</span>
-          <span className={`value ${monthPnL>=0?"text-ok":"text-danger"}`}>{fmtMoney(monthPnL, currency)}</span>
-          <span className="small">Sessões com trades: <b>{sessionsSoFar}</b> / {daysElapsed} (ritmo: {(sessionRate*100||0).toFixed(1)}%)</span>
-        </div>
-        <div className="kpi">
-          <span className="title">Despesas de trading (mês)</span>
-          <span className="value">{fmtMoney(expenses, currency)}</span>
-          <div className="flex gap-2">
-            <input className="input" placeholder="Adicionar despesa" value={add} onChange={e => setAdd(e.target.value)} />
-            <button className="btn" onClick={async () => {
-              const v = parseFloat(add || "");
-              if (!isFinite(v)) { alert("Valor inválido"); return; }
-              await addMonthExpense(auth.currentUser!.uid, y, m, v);
-              setAdd("");
-            }}>Adicionar</button>
+
+      {/* grade de KPI cards: 2 col em mobile, 4 col em md+ */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Kpi
+          label="PnL acumulado (mês)"
+          value={fmtMoney(monthPnL, currency)}
+          tone={monthPnL >= 0 ? "pos" : "neg"}
+        />
+        <Kpi
+          label="Despesas (mês)"
+          value={fmtMoney(expenses, currency)}
+          hint="Somatório das despesas registadas no mês."
+        />
+        <Kpi
+          label="Base do payout"
+          value={fmtMoney(base, currency)}
+          hint="PnL do mês − despesas"
+          tone={base >= 0 ? "pos" : "neg"}
+        />
+        <Kpi
+          label="Payout disponível (35%)"
+          value={fmtMoney(payoutNow, currency)}
+          chip
+          tone={payoutNow > 0 ? "pos" : undefined}
+        />
+
+        <Kpi
+          label="Média por sessão"
+          value={fmtMoney(avgPerSession, currency)}
+          hint={
+            sessionsSoFar > 0
+              ? `${sessionsSoFar} sessões com trades`
+              : "Sem sessões com trades"
+          }
+        />
+        <Kpi
+          label="Sessões restantes (estim.)"
+          value={`${expectedRemainingSessions}`}
+          hint={`Dias restantes: ${daysLeft} • Ritmo ${((sessionRate || 0) * 100).toFixed(1)}%`}
+        />
+        <Kpi
+          label="PnL projetado (fim do mês)"
+          value={fmtMoney(projectedPnL, currency)}
+          tone={projectedPnL >= 0 ? "pos" : "neg"}
+          hint={`Payout projetado (35%): ${fmtMoney(projectedPayout, currency)}`}
+        />
+
+        {/* Card de ação: adicionar despesa */}
+        <div className="rounded-xl border border-line bg-slate-900/40 p-3 min-w-0 text-center flex flex-col items-center justify-center">
+          <div className="text-sub text-[11px] md:text-xs leading-tight mb-1">
+            Adicionar despesa (mês)
           </div>
-          <span className="small">Somatório mensal; usa valores positivos. Não pode ficar negativo.</span>
-        </div>
-        <div className="kpi">
-          <span className="title">Payout disponível (35%)</span>
-          <span className={`inline-block px-2 py-1 rounded-full border ${payoutNow>0?"text-green-600 bg-green-950 border-green-800":"text-slate-400 bg-slate-900 border-slate-700"}`}>
-            {fmtMoney(payoutNow, currency)}
-          </span>
-          <span className="small">Base: PnL mês − despesas = <b>{fmtMoney(base, currency)}</b></span>
+          <div className="flex w-full items-center justify-center gap-2">
+            <input
+              className="input w-full"
+              placeholder="Valor (ex: 12.50)"
+              inputMode="decimal"
+              value={add}
+              onChange={(e) => setAdd(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") onAddExpense();
+              }}
+              aria-label="Adicionar despesa do mês"
+            />
+            <button className="btn" disabled={saving} onClick={onAddExpense}>
+              {saving ? "..." : "Adicionar"}
+            </button>
+          </div>
+          <div className="text-sub small mt-2">
+            Usa valores positivos. É registado no mês atual.
+          </div>
         </div>
       </div>
+    </div>
+  );
+}
 
-      <hr className="border-line my-3" />
-
-      <div className="grid md:grid-cols-3 gap-3">
-        <div className="kpi"><span className="title">Média por sessão</span><span className="value">{fmtMoney(avgPerSession, currency)}</span></div>
-        <div className="kpi"><span className="title">Sessões restantes (estim.)</span><span className="value">{expectedRemainingSessions}</span><span className="small">Dias restantes: {daysLeft}</span></div>
-        <div className="kpi"><span className="title">PnL projetado (fim do mês)</span><span className={`value ${projectedPnL>=0?"text-ok":"text-danger"}`}>{fmtMoney(projectedPnL, currency)}</span><span className="small">Payout projetado (35%): <b>{fmtMoney(projectedPayout, currency)}</b></span></div>
-      </div>
+/** Card de KPI reutilizável, com textos centrados */
+function Kpi({
+  label,
+  value,
+  hint,
+  tone,
+  chip,
+}: {
+  label: string;
+  value: string;
+  hint?: string;
+  tone?: "pos" | "neg";
+  chip?: boolean;
+}) {
+  const color =
+    tone === "pos" ? "text-ok" : tone === "neg" ? "text-danger" : "text-slate-200";
+  return (
+    <div className="rounded-xl border border-line bg-slate-900/40 p-2 md:p-3 min-w-0 text-center">
+      <div className="text-sub text-[11px] md:text-xs leading-tight truncate">{label}</div>
+      {chip ? (
+        <div
+          className={`inline-block mt-1 px-2 py-1 rounded-full border ${
+            tone === "pos"
+              ? "text-green-500 bg-green-950/70 border-green-800/60"
+              : "text-slate-300 bg-slate-800/70 border-slate-700/60"
+          } text-sm md:text-base`}
+          title={value}
+        >
+          {value}
+        </div>
+      ) : (
+        <div
+          className={`font-semibold ${color} text-sm md:text-base leading-tight whitespace-nowrap truncate`}
+          title={value}
+        >
+          {value}
+        </div>
+      )}
+      {hint && <div className="text-sub small mt-1 truncate" title={hint}>{hint}</div>}
     </div>
   );
 }

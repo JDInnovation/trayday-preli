@@ -204,9 +204,7 @@ function DashboardContent({
 
   const growthPct =
     user.startingBalance! > 0
-      ? ((user.currentBalance! - user.startingBalance!) /
-          user.startingBalance!) *
-        100
+      ? ((user.currentBalance! - user.startingBalance!) / user.startingBalance!) * 100
       : 0;
   const maxPerTrade = 0.03 * (user.currentBalance || 0);
   const maxPerDay = 0.09 * (user.currentBalance || 0);
@@ -262,48 +260,51 @@ function DashboardContent({
     <div className="flex flex-col gap-4">
       <HeaderBar />
 
-      {/* KPIs */}
-      <div className="grid md:grid-cols-4 gap-3">
-        <div className="card kpi">
-          <span className="title">Saldo atual</span>
-          <span className="value">
+      {/* KPIs (grupo 1) — 2 colunas no mobile, 4 no md+; texto centrado */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <div className="card kpi text-center min-w-0">
+          <span className="title block text-center">Saldo atual</span>
+          <span className="value block text-center">
             {fmtMoney(user.currentBalance || 0, user.currency)}
           </span>
         </div>
-        <div className="card kpi">
-          <span className="title">% lucro desde início</span>
-          <span className={`value ${growthPct >= 0 ? "text-ok" : "text-danger"}`}>
+        <div className="card kpi text-center min-w-0">
+          <span className="title block text-center">% lucro desde início</span>
+          <span className={`value block text-center ${growthPct >= 0 ? "text-ok" : "text-danger"}`}>
             {isFinite(growthPct) ? growthPct.toFixed(2) : "—"}%
           </span>
         </div>
-        <div className="card kpi">
-          <span className="title">P&L do mês</span>
-          <span className={`value ${monthPnL >= 0 ? "text-ok" : "text-danger"}`}>
+        <div className="card kpi text-center min-w-0">
+          <span className="title block text-center">P&L do mês</span>
+          <span className={`value block text-center ${monthPnL >= 0 ? "text-ok" : "text-danger"}`}>
             {fmtMoney(monthPnL, user.currency)}
           </span>
         </div>
-        <div className="card kpi">
-          <span className="title">Trades (total)</span>
-          <span className="value">{trades.length}</span>
+        <div className="card kpi text-center min-w-0">
+          <span className="title block text-center">Trades (total)</span>
+          <span className="value block text-center">{trades.length}</span>
         </div>
       </div>
 
-      <div className="grid md:grid-cols-3 gap-3">
-        <div className="card kpi">
-          <span className="title">Máx. por trade (3%)</span>
-          <span className="value text-danger">
+      {/* KPIs (grupo 2) — 2 colunas no mobile, 3 no md+; texto centrado */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+        <div className="card kpi text-center min-w-0">
+          <span className="title block text-center">Máx. por trade (3%)</span>
+          <span className="value block text-center text-danger">
             {fmtMoney(maxPerTrade, user.currency)}
           </span>
         </div>
-        <div className="card kpi">
-          <span className="title">Máx. no dia (9%)</span>
-          <span className="value text-danger">
+        <div className="card kpi text-center min-w-0">
+          <span className="title block text-center">Máx. no dia (9%)</span>
+          <span className="value block text-center text-danger">
             {fmtMoney(maxPerDay, user.currency)}
           </span>
         </div>
-        <div className="card kpi">
-          <span className="title">Meta do dia (15%)</span>
-          <span className="value text-ok">{fmtMoney(dayGoal, user.currency)}</span>
+        <div className="card kpi text-center min-w-0">
+          <span className="title block text-center">Meta do dia (15%)</span>
+          <span className="value block text-center text-ok">
+            {fmtMoney(dayGoal, user.currency)}
+          </span>
         </div>
       </div>
 

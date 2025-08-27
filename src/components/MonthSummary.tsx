@@ -2,7 +2,7 @@
 
 import { fmtMoney } from "@/lib/utils";
 
-export default function MonthSummary(props: {
+type Props = {
   monthLabel: string;
   currency: string;
   monthPnL: number;
@@ -13,20 +13,72 @@ export default function MonthSummary(props: {
   worst?: string;
   avgPerTrade: number;
   daysLeft: number;
-}) {
-  const { monthLabel: ml, currency, monthPnL, monthPct, monthWinRate, totalTrades, best, worst, avgPerTrade, daysLeft } = props;
+};
+
+export default function MonthSummary({
+  monthLabel: ml,
+  currency,
+  monthPnL,
+  monthPct,
+  monthWinRate,
+  totalTrades,
+  best,
+  worst,
+  avgPerTrade,
+  daysLeft,
+}: Props) {
   return (
     <div className="card">
       <h3 className="font-bold mb-2">Resumo do mês — {ml}</h3>
-      <div className="grid md:grid-cols-4 gap-3">
-        <div className="kpi"><span className="title">PnL do mês</span><span className={`value ${monthPnL>=0?"text-ok":"text-danger"}`}>{fmtMoney(monthPnL, currency)}</span></div>
-        <div className="kpi"><span className="title">% vs início (mês)</span><span className={`value ${monthPct>=0?"text-ok":"text-danger"}`}>{monthPct.toFixed(2)}%</span></div>
-        <div className="kpi"><span className="title">Win rate (mês)</span><span className="value">{monthWinRate.toFixed(2)}%</span></div>
-        <div className="kpi"><span className="title">Trades no mês</span><span className="value">{totalTrades}</span></div>
-        <div className="kpi"><span className="title">Melhor dia</span><span className="value">{best || "—"}</span></div>
-        <div className="kpi"><span className="title">Pior dia</span><span className="value">{worst || "—"}</span></div>
-        <div className="kpi"><span className="title">Média por trade</span><span className="value">{fmtMoney(avgPerTrade, currency)}</span></div>
-        <div className="kpi"><span className="title">Dias até fechar o mês</span><span className="value">{daysLeft > 0 ? daysLeft : "—"}</span></div>
+
+      {/* 2 colunas em ecrãs pequenos; 4 em md+ */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        <Kpi
+          label="PnL do mês"
+          value={fmtMoney(monthPnL, currency)}
+          tone={monthPnL >= 0 ? "pos" : "neg"}
+        />
+        <Kpi
+          label="% vs início (mês)"
+          value={`${monthPct.toFixed(2)}%`}
+          tone={monthPct >= 0 ? "pos" : "neg"}
+        />
+        <Kpi label="Win rate (mês)" value={`${monthWinRate.toFixed(2)}%`} />
+        <Kpi label="Trades no mês" value={`${totalTrades}`} />
+        <Kpi label="Melhor dia" value={best || "—"} />
+        <Kpi label="Pior dia" value={worst || "—"} />
+        <Kpi label="Média por trade" value={fmtMoney(avgPerTrade, currency)} />
+        <Kpi
+          label="Dias até fechar o mês"
+          value={daysLeft > 0 ? String(daysLeft) : "—"}
+        />
+      </div>
+    </div>
+  );
+}
+
+function Kpi({
+  label,
+  value,
+  tone,
+}: {
+  label: string;
+  value: string;
+  tone?: "pos" | "neg";
+}) {
+  const color =
+    tone === "pos" ? "text-ok" : tone === "neg" ? "text-danger" : "text-slate-200";
+
+  return (
+    <div className="rounded-xl border border-line bg-slate-900/40 p-2 md:p-3 min-w-0 text-center">
+      <div className="text-sub text-[11px] md:text-xs leading-tight truncate">
+        {label}
+      </div>
+      <div
+        className={`font-semibold ${color} text-sm md:text-base leading-tight whitespace-nowrap truncate`}
+        title={value}
+      >
+        {value}
       </div>
     </div>
   );
