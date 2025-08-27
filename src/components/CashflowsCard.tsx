@@ -27,7 +27,7 @@ export default function CashflowsCard({ cashflows, currency }: { cashflows: Cash
       <h3 className="font-bold mb-2">Movimentos de conta</h3>
       <div className="grid md:grid-cols-3 gap-3">
         <div><label className="label">Montante (+ depósito, − levantamento)</label><input className="input" type="number" step="0.01" value={amount} onChange={e => setAmount(e.target.value)} /></div>
-        <div><label className="label">Nota (opcional)</label><input className="input" value={note} onChange={e => setNote(e.target.value)} /></div>
+        <div><label classhhhonal)</label><input className="input" value={note} onChange={e => setNote(e.target.value)} /></div>
         <div className="flex items-end justify-end"><button className="btn" onClick={add}>Registar movimento</button></div>
       </div>
 
