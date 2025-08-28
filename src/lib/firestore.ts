@@ -1,37 +1,18 @@
-// src/lib/firestore.ts
+"use client";
+
 import { db } from "@/lib/firebase.client";
 import {
-  collection,
-  doc,
-  setDoc,
-  getDoc,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  runTransaction,
-  deleteDoc,
-  updateDoc,
-  getDocs,
+  collection, doc, setDoc, getDoc, addDoc, onSnapshot, query, where, orderBy, runTransaction, deleteDoc
 } from "firebase/firestore";
-import {
-  Cashflow,
-  Trade,
-  UserDoc,
-  UserProfile,
-  UserPreferences,
-  RiskParams,
-  TradeMultipliers,
-} from "./types";
-import { uid, monthKey, startOfMonth, endOfMonth } from "./utils";
+import { Cashflow, Trade, UserDoc } from "./types";
+import { uid, monthKey, startOfMonth, endOfMonth, typeFactor } from "./utils";
 import { User } from "firebase/auth";
 
-/* ---------- Refs ---------- */
 export const userDocRef = (uidStr: string) => doc(db, "users", uidStr);
 export const tradesColRef = (uidStr: string) => collection(db, "users", uidStr, "trades");
 export const cashflowsColRef = (uidStr: string) => collection(db, "users", uidStr, "cashflows");
 
-/* ---------- Bootstrap user ---------- */
+// Create user doc on first login
 export async function ensureUserDoc(user: User) {
   const ref = userDocRef(user.uid);
   const snap = await getDoc(ref);
@@ -39,36 +20,36 @@ export async function ensureUserDoc(user: User) {
     const data: UserDoc = {
       email: user.email || "",
       currency: "EUR",
-      // Usamos null para que o onboarding detecte 1.º login
-      startingBalance: null as any,
-      currentBalance: null as any,
+      startingBalance: null,
+      currentBalance: null,
       monthlyExpenses: {},
-      createdAt: Date.now(),
-    } as any;
+      createdAt: Date.now()
+    };
     await setDoc(ref, data);
   }
 }
 
-/* ---------- Onboarding ---------- */
+// Save onboarding
 export async function saveOnboarding(uidStr: string, startingBalance: number, currency: string) {
   const ref = userDocRef(uidStr);
   await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
-    const _u = snap.data() as UserDoc;
+    const u = snap.data() as UserDoc;
     tx.update(ref, {
-      startingBalance,
+      startingBalance: startingBalance,
       currentBalance: startingBalance,
-      currency,
+      currency: currency
     });
   });
 }
 
-/* ---------- Trades ---------- */
+// Open trade
 export async function openTrade(uidStr: string, t: Omit<Trade, "id">) {
   const newId = uid();
   await setDoc(doc(tradesColRef(uidStr), newId), { ...t, id: newId });
 }
 
+// Close trade (transaction to also update balance)
 export async function closeTrade(uidStr: string, tradeId: string, pnlInput: number) {
   const uRef = userDocRef(uidStr);
   const tRef = doc(tradesColRef(uidStr), tradeId);
@@ -90,6 +71,7 @@ export async function closeTrade(uidStr: string, tradeId: string, pnlInput: numb
   });
 }
 
+// Edit trade (handles balance diff if status/pnl changes)
 export async function editTrade(uidStr: string, next: Trade) {
   const uRef = userDocRef(uidStr);
   const tRef = doc(tradesColRef(uidStr), next.id);
@@ -106,15 +88,15 @@ export async function editTrade(uidStr: string, next: Trade) {
 
     if (wasClosed && willClosed) {
       const oldPnL = prev.pnl || 0;
-      const newNet = next.pnl ?? 0;
+      const newNet = (next.pnl ?? 0);
       delta = newNet - oldPnL;
     } else if (!wasClosed && willClosed) {
-      const newNet = next.pnl ?? 0;
+      const newNet = (next.pnl ?? 0);
       delta = newNet;
     } else if (wasClosed && !willClosed) {
       delta = -(prev.pnl || 0);
-      (next as any).pnl = null;
-      (next as any).closedAt = null;
+      next.pnl = null;
+      next.closedAt = null;
     }
 
     tx.set(tRef, next as Partial<Trade>, { merge: true });
@@ -122,7 +104,7 @@ export async function editTrade(uidStr: string, next: Trade) {
   });
 }
 
-/* ---------- Cashflows ---------- */
+// Cashflow add/delete with balance updates
 export async function addCashflow(uidStr: string, amount: number, note?: string) {
   const uRef = userDocRef(uidStr);
   const cfRef = cashflowsColRef(uidStr);
@@ -158,89 +140,45 @@ export async function deleteCashflow(uidStr: string, cfId: string) {
   });
 }
 
-/* ---------- Expenses ---------- */
+// Expenses
 export async function addMonthExpense(uidStr: string, y: number, m: number, delta: number) {
   const key = monthKey(y, m);
   const uRef = userDocRef(uidStr);
   await runTransaction(db, async (tx) => {
     const uSnap = await tx.get(uRef);
     const u = uSnap.data() as UserDoc;
-    const cur =
-      u.monthlyExpenses && typeof (u.monthlyExpenses as any)[key] === "number"
-        ? (u.monthlyExpenses as any)[key]
-        : 0;
+    const cur = (u.monthlyExpenses && typeof u.monthlyExpenses[key] === "number") ? (u.monthlyExpenses as any)[key] : 0;
     const next = Math.max(0, cur + delta);
     const newMap = { ...(u.monthlyExpenses || {}), [key]: next };
     tx.update(uRef, { monthlyExpenses: newMap });
   });
 }
 
-/* ---------- Streams ---------- */
+// Streams (listeners)
 export function listenUser(uidStr: string, cb: (u: UserDoc) => void) {
   return onSnapshot(userDocRef(uidStr), (snap) => cb(snap.data() as UserDoc));
 }
 
 export function listenTradesMonth(uidStr: string, y: number, m: number, cb: (arr: Trade[]) => void) {
   const s = startOfMonth(y, m).getTime();
-  const qy = query(
+  const e = endOfMonth(y, m).getTime();
+  // brings both open (opened this month) and closed (closed this month)
+  const q = query(
     tradesColRef(uidStr),
     where("openAt", ">=", s),
     where("openAt", "<=", endOfMonth(y, m).getTime()),
     orderBy("openAt", "desc")
   );
-  return onSnapshot(qy, (snap) => cb(snap.docs.map((d) => d.data() as Trade)));
+  // We’ll also include closed filtered separately if needed in UI.
+  return onSnapshot(q, (snap) => cb(snap.docs.map(d => d.data() as Trade)));
 }
 
 export function listenAllTrades(uidStr: string, cb: (arr: Trade[]) => void) {
-  const qy = query(tradesColRef(uidStr), orderBy("openAt", "desc"));
-  return onSnapshot(qy, (snap) => cb(snap.docs.map((d) => d.data() as Trade)));
+  const q = query(tradesColRef(uidStr), orderBy("openAt", "desc"));
+  return onSnapshot(q, (snap) => cb(snap.docs.map(d => d.data() as Trade)));
 }
 
 export function listenCashflows(uidStr: string, cb: (arr: Cashflow[]) => void) {
-  const qy = query(cashflowsColRef(uidStr), orderBy("ts", "desc"));
-  return onSnapshot(qy, (snap) => cb(snap.docs.map((d) => d.data() as Cashflow)));
-}
-
-/* ---------- SETTINGS HELPERS ---------- */
-export async function updateUserProfile(uid: string, data: UserProfile) {
-  const ref = userDocRef(uid);
-  await setDoc(ref, { profile: data }, { merge: true });
-}
-
-export async function updateUserPreferences(uid: string, prefs: UserPreferences) {
-  const ref = userDocRef(uid);
-  await setDoc(ref, { preferences: prefs, currency: prefs.currency }, { merge: true });
-}
-
-export async function updateRiskParams(uid: string, risk: RiskParams) {
-  const ref = userDocRef(uid);
-  await setDoc(ref, { risk }, { merge: true });
-}
-
-export async function updateMultipliers(uid: string, multipliers: TradeMultipliers) {
-  const ref = userDocRef(uid);
-  await setDoc(ref, { multipliers }, { merge: true });
-}
-
-/** Apaga TODAS as trades e movimentos do utilizador */
-export async function clearAccountData(uid: string) {
-  const tradesRef = tradesColRef(uid);
-  const cashRef = cashflowsColRef(uid);
-  const [tSnap, cSnap] = await Promise.all([getDocs(tradesRef), getDocs(cashRef)]);
-  const dels: Promise<any>[] = [];
-  tSnap.forEach((d) => dels.push(deleteDoc(d.ref)));
-  cSnap.forEach((d) => dels.push(deleteDoc(d.ref)));
-  await Promise.all(dels);
-}
-
-/** Repõe saldo/moeda e “zera” equity atual */
-export async function resetTradingAccount(uid: string, startingBalance: number, currency: string) {
-  const ref = userDocRef(uid);
-  await updateDoc(ref, {
-    startingBalance,
-    currentBalance: startingBalance,
-    currency,
-    preferences: { currency, maskBalance: false },
-    resetAt: Date.now(),
-  } as any);
+  const q = query(cashflowsColRef(uidStr), orderBy("ts", "desc"));
+  return onSnapshot(q, (snap) => cb(snap.docs.map(d => d.data() as Cashflow)));
 }
