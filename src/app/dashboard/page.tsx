@@ -241,31 +241,32 @@ function DashboardContent({
   // ---------- UI ----------
   const monthLbl = monthLabel(viewYear, viewMonth);
 
+  // altura de header para compensar âncoras
+  const scrollMt = { scrollMarginTop: "96px" };
+
   return (
     <div className="flex flex-col gap-6">
       <HeaderBar />
 
-      {/* Nav secundária + Timeframe sticky */}
-      <div className="sticky top-2 z-30">
-        <div className="card flex flex-col md:flex-row md:items-center md:justify-between gap-3">
-          <AnchorNav
-            items={[
-              { href: "#overview", label: "Visão rápida", icon: <Activity className="h-4 w-4" /> },
-              { href: "#kpis", label: "KPIs", icon: <Gauge className="h-4 w-4" /> },
-              { href: "#charts", label: "Gráficos", icon: <LineChart className="h-4 w-4" /> },
-              { href: "#records", label: "Registos", icon: <BarChart2 className="h-4 w-4" /> },
-              { href: "#calendar", label: "Calendário", icon: <Calendar className="h-4 w-4" /> },
-              { href: "#exports", label: "Exportar", icon: <Download className="h-4 w-4" /> },
-            ]}
-          />
-          <div className="min-w-[260px]">
-            <TimeframeSelector onChange={setTf} initialMode="month" />
-          </div>
+      {/* Nav secundária + Timeframe (AGORA NÃO-STICKY) */}
+      <div className="card flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+        <AnchorNav
+          items={[
+            { href: "#overview", label: "Visão rápida", icon: <Activity className="h-4 w-4" /> },
+            { href: "#kpis", label: "KPIs", icon: <Gauge className="h-4 w-4" /> },
+            { href: "#charts", label: "Gráficos", icon: <LineChart className="h-4 w-4" /> },
+            { href: "#records", label: "Registos", icon: <BarChart2 className="h-4 w-4" /> },
+            { href: "#calendar", label: "Calendário", icon: <Calendar className="h-4 w-4" /> },
+            { href: "#exports", label: "Exportar", icon: <Download className="h-4 w-4" /> },
+          ]}
+        />
+        <div className="min-w-[260px]">
+          <TimeframeSelector onChange={setTf} initialMode="month" />
         </div>
       </div>
 
       {/* Overview */}
-      <section id="overview" className="flex flex-col gap-3">
+      <section id="overview" className="flex flex-col gap-3" style={scrollMt}>
         <SectionHeading
           title="Visão rápida"
           subtitle="Sessão atual, risco e saldo"
@@ -282,7 +283,7 @@ function DashboardContent({
       </section>
 
       {/* KPIs */}
-      <section id="kpis" className="flex flex-col gap-3">
+      <section id="kpis" className="flex flex-col gap-3" style={scrollMt}>
         <SectionHeading
           title="KPIs"
           subtitle="10 indicadores com gráficos dedicados"
@@ -303,7 +304,7 @@ function DashboardContent({
       </section>
 
       {/* Charts topo — seguem timeframe */}
-      <section id="charts" className="flex flex-col gap-3">
+      <section id="charts" className="flex flex-col gap-3" style={scrollMt}>
         <SectionHeading
           title="Gráficos principais"
           subtitle="Evolução e distribuição"
@@ -346,7 +347,7 @@ function DashboardContent({
       </section>
 
       {/* Registos */}
-      <section id="records" className="flex flex-col gap-3">
+      <section id="records" className="flex flex-col gap-3" style={scrollMt}>
         <SectionHeading
           title="Registos"
           subtitle="Abertura de trade e movimentos da conta"
@@ -364,7 +365,7 @@ function DashboardContent({
       </section>
 
       {/* Calendário e Resumo */}
-      <section id="calendar" className="flex flex-col gap-3">
+      <section id="calendar" className="flex flex-col gap-3" style={scrollMt}>
         <SectionHeading
           title="Calendário & resumo do mês"
           subtitle="Sessões, desempenho diário e síntese"
@@ -450,7 +451,7 @@ function DashboardContent({
       </section>
 
       {/* Exportações */}
-      <section id="exports" className="flex flex-col gap-3">
+      <section id="exports" className="flex flex-col gap-3" style={scrollMt}>
         <SectionHeading
           title="Exportações"
           subtitle="CSV, texto, PDF e cópia rápida"
