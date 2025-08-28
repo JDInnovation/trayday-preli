@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useState } from "react";
 import dynamic from "next/dynamic";
 import { MonthAggDay, Trade } from "@/lib/types";
 import { pad2, ymd } from "@/lib/utils";
@@ -408,14 +408,7 @@ function KpiChip({
   positive?: boolean;
   danger?: boolean;
 }) {
-  const color =
-    danger
-      ? "text-danger"
-      : positive === undefined
-      ? "text-slate-200"
-      : positive
-      ? "text-ok"
-      : "text-danger";
+  const color = danger ? "text-danger" : positive === undefined ? "text-slate-200" : positive ? "text-ok" : "text-danger";
   return (
     <div className="rounded-lg border border-line bg-slate-900/40 p-2">
       <div className="text-sub text-[11px]">{label}</div>
@@ -437,7 +430,7 @@ function InlinePanel({
   tradesList: Trade[];
   onOpenChart: () => void;
   currency: string;
-  sideBadge: (side?: string) => ReactNode; // ✅ usar ReactNode em vez de JSX.Element
+  sideBadge: (side?: string) => JSX.Element;
   fmtMoney: (v: number) => string;
 }) {
   return (
