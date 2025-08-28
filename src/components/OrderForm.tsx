@@ -1,194 +1,219 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Trade, TradeTypeKey } from "@/lib/types";
+import React, { useEffect, useMemo, useState } from "react";
 import { auth } from "@/lib/firebase.client";
-import { openTrade } from "@/lib/firestore";
-import { fmtMoney, typeFactor } from "@/lib/utils";
+import {
+  openTrade,
+  listenUser,
+} from "@/lib/firestore";
+import type { Trade, UserDoc } from "@/lib/types";
+import { fmtMoney } from "@/lib/utils";
 
-export default function OrderForm({
-  balance,
-  currency,
-}: {
-  balance: number;
-  currency: string;
-}) {
-  const [tType, setTType] = useState<TradeTypeKey>("normal");
+type TradeKind = "short" | "normal" | "long";
+
+const KIND_LABEL: Record<TradeKind, string> = {
+  short: "Trade Curta",
+  normal: "Trade Normal",
+  long: "Trade Longa",
+};
+
+// multiplicadores aconselhados (fallback caso o user não tenha prefs gravadas)
+const DEFAULT_MULTIPLIERS = {
+  short: 6,
+  normal: 3,
+  long: 1.8,
+};
+
+export default function OrderForm() {
+  const [userDoc, setUserDoc] = useState<UserDoc | null>(null);
   const [symbol, setSymbol] = useState("");
-  const [side, setSide] = useState<"LONG" | "SHORT">("LONG");
-  const [riskPct, setRiskPct] = useState(1);
-  const [fees, setFees] = useState(0);
-  const [sizeUsd, setSizeUsd] = useState<number | "">("");
-  const [note, setNote] = useState("");
-  const [err, setErr] = useState("");
+  const [riskAmount, setRiskAmount] = useState<number>(0);
+  const [fees, setFees] = useState<number>(0);
+  const [sizeUsd, setSizeUsd] = useState<number>(0);
+  const [notes, setNotes] = useState("");
+  const [kind, setKind] = useState<TradeKind>("normal");
+  const [submitting, setSubmitting] = useState(false);
 
-  // sugestão automática quando muda o tipo
+  // subscreve user para saber saldo, moeda e (se existir) preferências/multipliers
   useEffect(() => {
-    const suggested = (balance || 0) * typeFactor(tType);
-    if (sizeUsd === "") setSizeUsd(Number(suggested.toFixed(2)));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tType, balance]);
+    const u = auth.currentUser;
+    if (!u) return;
+    const unsub = listenUser(u.uid, (ud) => setUserDoc(ud));
+    return () => unsub && unsub();
+  }, []);
 
-  const recommended = (balance || 0) * typeFactor(tType);
-  const hint =
-    tType === "curta"
-      ? `Curta ×6`
-      : tType === "longa"
-      ? `Longa ×1,8`
-      : `Normal ×3`;
+  const currency = userDoc?.currency || "EUR";
+  const balance = userDoc?.currentBalance || 0;
 
-  const submit = async () => {
+  const multipliers = useMemo(() => {
+    const prefs = (userDoc as any)?.preferences?.tradeMultipliers as
+      | { short: number; normal: number; long: number }
+      | undefined;
+    return {
+      short: prefs?.short ?? DEFAULT_MULTIPLIERS.short,
+      normal: prefs?.normal ?? DEFAULT_MULTIPLIERS.normal,
+      long: prefs?.long ?? DEFAULT_MULTIPLIERS.long,
+    };
+  }, [userDoc]);
+
+  const suggestedSize = useMemo(() => {
+    const m = multipliers[kind];
+    return balance * m;
+  }, [balance, multipliers, kind]);
+
+  const sizeTooBig = sizeUsd > suggestedSize && suggestedSize > 0;
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!auth.currentUser) return;
+    if (!symbol.trim()) return;
+
     try {
-      setErr("");
-      const uid = auth.currentUser?.uid!;
-      const size = Number(sizeUsd);
-      if (!symbol || isNaN(size) || size <= 0) {
-        setErr("Preenche os campos corretamente.");
-        return;
-      }
-      const riskAmount = (riskPct / 100) * (balance || 0);
-      const trade: Omit<Trade, "id"> = {
-        symbol: symbol.toUpperCase().trim(),
-        side,
-        riskPct,
-        riskAmount,
-        fees,
-        sizeUsd: size,
-        tType,
-        note,
-        openAt: Date.now(),
+      setSubmitting(true);
+      const t: Omit<Trade, "id"> = {
+        symbol: symbol.trim().toUpperCase(),
+        side: "n/a", // simplificado — lado não usado no teu fluxo
+        riskAmount: Number(riskAmount) || 0,
+        fees: Number(fees) || 0,
+        sizeUsd: Number(sizeUsd) || 0,
+        notes: notes.trim(),
         status: "open",
-        balanceBefore: balance || 0,
-        recommended,
-        oversized: size > recommended,
-      };
-      await openTrade(uid, trade);
-      // reset parcial
+        openAt: Date.now(),
+        closedAt: null,
+        pnl: null,
+        r: null,
+        type: kind, // guarda o tipo de trade selecionado
+      } as any;
+
+      await openTrade(auth.currentUser.uid, t);
+
+      // reset
       setSymbol("");
+      setRiskAmount(0);
       setFees(0);
-      setSizeUsd("");
-      setNote("");
-    } catch (e: any) {
-      setErr(e.message || "Erro ao abrir trade");
+      setSizeUsd(0);
+      setNotes("");
+      setKind("normal");
+    } finally {
+      setSubmitting(false);
     }
-  };
+  }
 
   return (
-    <div className="card h-full">
-      <div className="flex items-center justify-between gap-2 mb-2">
-        <h3 className="font-bold">Abrir trade</h3>
-        <span className="badge">{hint}: {fmtMoney(recommended, currency)}</span>
-      </div>
+    <div className="card w-full max-w-full overflow-hidden">
+      <div className="p-4 sm:p-5">
+        <div className="flex items-start justify-between gap-3 mb-4">
+          <div className="min-w-0">
+            <h3 className="text-base sm:text-lg font-semibold leading-tight">
+              Abrir Trade
+            </h3>
+            <p className="text-xs sm:text-sm text-muted-foreground truncate">
+              {fmtMoney(suggestedSize, currency)}
+            </p>
+          </div>
 
-      {/* Tipo de trade */}
-      <div className="flex gap-2 p-1 mb-3">
-        {[
-          { key: "curta", label: "Curta (×6)" },
-          { key: "normal", label: "Normal (×3)" },
-          { key: "longa", label: "Longa (×1,8)" },
-        ].map((t) => (
-          <button
-            key={t.key}
-            type="button"
-            className={`px-3 py-2 rounded-lg border text-sm font-medium ${
-              tType === t.key
-                ? "btn-primary"
-                : "btn-ghost"
-            }`}
-            onClick={() => setTType(t.key as TradeTypeKey)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-        <div className="min-w-0">
-          <label className="label">Símbolo</label>
-          <input
-            className="input w-full"
-            value={symbol}
-            onChange={(e) => setSymbol(e.target.value)}
-            placeholder="BTC,ETH,SOL..."
-            autoCapitalize="characters"
-            autoCorrect="off"
-            spellCheck={false}
-          />
-        </div>
-
-        <div>
-          <label className="label">Lado</label>
-          <select
-            className="select w-full"
-            value={side}
-            onChange={(e) => setSide(e.target.value as any)}
-          >
-            <option>LONG</option>
-            <option>SHORT</option>
-          </select>
-        </div>
-
-        <div>
-          <label className="label">Risco (%)</label>
-          <input
-            className="input w-full"
-            type="number"
-            step="0.1"
-            inputMode="decimal"
-            value={riskPct}
-            onChange={(e) => setRiskPct(parseFloat(e.target.value || "0"))}
-          />
-        </div>
-
-        <div>
-          <label className="label">Taxa (fees)</label>
-          <input
-            className="input w-full"
-            type="number"
-            step="0.01"
-            inputMode="decimal"
-            value={fees}
-            onChange={(e) => setFees(parseFloat(e.target.value || "0"))}
-          />
-        </div>
-
-        <div>
-          <label className="label">Tamanho (USD)</label>
-          <input
-            className={`input w-full ${Number(sizeUsd) > recommended ? "ring-1 ring-red-400/60" : ""}`}
-            type="number"
-            step="0.01"
-            inputMode="decimal"
-            value={sizeUsd}
-            onChange={(e) =>
-              setSizeUsd(e.target.value === "" ? "" : parseFloat(e.target.value))
-            }
-            placeholder={fmtMoney(recommended, currency)}
-          />
-          {Number(sizeUsd) > recommended && (
-            <div className="small text-danger mt-1">
-              Atenção ao risco.
+          {/* Selector do tipo de trade */}
+          <div className="shrink-0">
+            <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
+              {(["short", "normal", "long"] as TradeKind[]).map((k) => (
+                <button
+                  key={k}
+                  type="button"
+                  onClick={() => setKind(k)}
+                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition min-w-0
+                    ${kind === k ? "bg-primary text-primary-foreground" : "hover:bg-white/10"}`}
+                >
+                  {KIND_LABEL[k]}
+                </button>
+              ))}
             </div>
-          )}
+          </div>
         </div>
 
-        <div className="min-w-0">
-          <label className="label">Notas</label>
-          <input
-            className="input w-full"
-            value={note}
-            onChange={(e) => setNote(e.target.value)}
-            placeholder="setup, emoções, etc."
-          />
-        </div>
-      </div>
+        <form onSubmit={handleSubmit} className="space-y-4">
+          {/* GRID RESPONSIVA - nunca “sangra” em mobile */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Símbolo
+              </label>
+              <input
+                className="w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 outline-none focus:ring-2 focus:ring-primary/40"
+                placeholder="AAPL, EURUSD..."
+                value={symbol}
+                onChange={(e) => setSymbol(e.target.value)}
+              />
+            </div>
 
-      {err && <div className="text-danger text-sm mt-2">{err}</div>}
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Risco (€ / $)
+              </label>
+              <input
+                type="number"
+                className="w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 outline-none focus:ring-2 focus:ring-primary/40"
+                value={riskAmount}
+                onChange={(e) => setRiskAmount(Number(e.target.value))}
+              />
+            </div>
 
-      <div className="flex justify-end mt-3">
-        <button className="btn" onClick={submit}>
-          Abrir
-        </button>
+            <div className="min-w-0">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Taxas / Fees ({currency})
+              </label>
+              <input
+                type="number"
+                className="w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 outline-none focus:ring-2 focus:ring-primary/40"
+                value={fees}
+                onChange={(e) => setFees(Number(e.target.value))}
+              />
+            </div>
+
+            <div className="min-w-0 sm:col-span-2 lg:col-span-1">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Tamanho da Ordem (USD)
+              </label>
+              <input
+                type="number"
+                className={`w-full min-w-0 rounded-xl border px-3 py-2 outline-none focus:ring-2
+                 ${sizeTooBig ? "border-red-400/60 bg-red-500/5 focus:ring-red-400/40" : "border-white/10 bg-white/5 focus:ring-primary/40"}`}
+                value={sizeUsd}
+                onChange={(e) => setSizeUsd(Number(e.target.value))}
+              />
+              {sizeTooBig && (
+                <p className="mt-1 text-[11px] text-red-300">
+                  Acima do aconselhado ({fmtMoney(suggestedSize, currency)}).
+                </p>
+              )}
+            </div>
+
+            <div className="min-w-0 sm:col-span-2 lg:col-span-3">
+              <label className="block text-xs font-medium text-muted-foreground mb-1">
+                Notas (opcional)
+              </label>
+              <textarea
+                rows={3}
+                className="w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 outline-none focus:ring-2 focus:ring-primary/40"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Contexto da trade, ideia, setup..."
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2 pt-2">
+            <button
+              type="submit"
+              disabled={submitting || !symbol.trim()}
+              className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
+            >
+              {submitting ? "A abrir..." : "Abrir Trade"}
+            </button>
+            <div className="text-xs text-muted-foreground">
+              Saldo: <span className="font-medium">{fmtMoney(balance, currency)}</span>
+            </div>
+          </div>
+        </form>
       </div>
     </div>
   );
