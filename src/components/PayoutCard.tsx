@@ -73,7 +73,7 @@ export default function PayoutCard({
 
   return (
     <div className="card">
-      <h3 className="font-bold mb-2">Payout</h3>
+      <h3 className="font-bold mb-2">Pagamento</h3>
 
       {/* grade de KPI cards: 2 col em mobile, 4 col em md+ */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -85,7 +85,7 @@ export default function PayoutCard({
         <Kpi
           label="Despesas (mês)"
           value={fmtMoney(expenses, currency)}
-          hint="Somatório das despesas registadas no mês."
+          hint="Somatório das despesas."
         />
         <Kpi
           label="Base do payout"
@@ -124,7 +124,7 @@ export default function PayoutCard({
         {/* Card de ação: adicionar despesa */}
         <div className="rounded-xl border border-line bg-slate-900/40 p-3 min-w-0 text-center flex flex-col items-center justify-center">
           <div className="text-sub text-[11px] md:text-xs leading-tight mb-1">
-            Adicionar despesa (mês)
+            Adicionar Despesa (mês)
           </div>
           <div className="flex w-full items-center justify-center gap-2">
             <input
@@ -143,7 +143,7 @@ export default function PayoutCard({
             </button>
           </div>
           <div className="text-sub small mt-2">
-            Usa valores positivos. É registado no mês atual.
+            Usa valores positivos.
           </div>
         </div>
       </div>

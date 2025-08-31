@@ -109,7 +109,7 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
   return (
     <div className="card overflow-hidden">
       <div className="flex items-center justify-between mb-2">
-        <h3 className="font-bold">Trades — últimas</h3>
+        <h3 className="font-bold">Últimas Trades</h3>
 
         <div className="flex items-center gap-2">
           <button

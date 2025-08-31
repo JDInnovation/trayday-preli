@@ -29,7 +29,7 @@ export default function MonthSummary({
 }: Props) {
   return (
     <div className="card">
-      <h3 className="font-bold mb-2">Resumo do mês — {ml}</h3>
+      <h3 className="font-bold mb-2">Resumo de {ml}</h3>
 
       {/* 2 colunas em ecrãs pequenos; 4 em md+ */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">

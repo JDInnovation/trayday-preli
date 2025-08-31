@@ -128,12 +128,15 @@ html[data-theme="light"] {
   .label { @apply mb-1 text-sm font-medium; color: var(--text-sub); }
 
   .input, .select, .textarea {
+    width: 100%;
+    min-width: 50px;
     background: var(--surface);
     border: 1px solid var(--border);
     border-radius: 12px;
     color: var(--text);
     transition: all .2s ease;
     outline: none;
+  
   }
   .input, .select { @apply px-3 py-2; }
   .textarea { @apply px-3 py-2; resize: vertical; }
@@ -329,3 +332,29 @@ html[data-theme="light"] {
   border-color: color-mix(in oklab, var(--brand) 40%, var(--border) 60%);
 }
 .icon-btn:active { transform: translateY(1px); }
+/* --- Modal helpers --- */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.6);
+  backdrop-filter: blur(4px);
+}
+
+.modal {
+  position: fixed;
+  inset-inline: 0;
+  bottom: 0;
+  margin-inline: auto;
+  max-width: 560px;
+  border-radius: 1rem 1rem 0 0;
+  background: #0b0b0c;
+  border: 1px solid rgba(255,255,255,.08);
+  padding: .75rem;
+}
+
+/* Opcional: realçar o dia de hoje no calendário */
+.calendar-today {
+  outline: 2px dashed var(--brand);
+  outline-offset: 2px;
+}
+

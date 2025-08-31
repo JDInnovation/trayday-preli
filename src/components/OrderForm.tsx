@@ -1,220 +1,516 @@
+// src/components/OrderForm.tsx
 "use client";
 
 import React, { useEffect, useMemo, useState } from "react";
-import { auth } from "@/lib/firebase.client";
 import {
-  openTrade,
-  listenUser,
-} from "@/lib/firestore";
-import type { Trade, UserDoc } from "@/lib/types";
+  Eye,
+  EyeOff,
+  Clock,
+  Calendar as CalendarIcon,
+  Plus,
+  Rocket,
+} from "lucide-react";
 import { fmtMoney } from "@/lib/utils";
+import { auth } from "@/lib/firebase.client";
+import { openTrade, editTrade, tradesColRef } from "@/lib/firestore";
+import type { Trade } from "@/lib/types";
+import { doc, setDoc } from "firebase/firestore";
 
-type TradeKind = "short" | "normal" | "long";
+type QuickMode = "curta" | "normal" | "longa";
 
-const KIND_LABEL: Record<TradeKind, string> = {
-  short: "Trade Curta",
-  normal: "Trade Normal",
-  long: "Trade Longa",
-};
+export default function OrderForm({
+  balance,
+  currency,
+}: {
+  balance: number;
+  currency: string;
+}) {
+  // ---- UI State
+  const [symbol, setSymbol] = useState<string>("");
+  const [side, setSide] = useState<"long" | "short">("long");
 
-// multiplicadores aconselhados (fallback caso o user não tenha prefs gravadas)
-const DEFAULT_MULTIPLIERS = {
-  short: 6,
-  normal: 3,
-  long: 1.8,
-};
+  // risco (informativo) — 1.5% por defeito
+  const [riskPct, setRiskPct] = useState<number>(1.5);
+  const riskMoney = useMemo<number>(
+    () => Math.max(0, (balance || 0) * (riskPct / 100)),
+    [balance, riskPct]
+  );
 
-export default function OrderForm() {
-  const [userDoc, setUserDoc] = useState<UserDoc | null>(null);
-  const [symbol, setSymbol] = useState("");
-  const [riskAmount, setRiskAmount] = useState<number>(0);
-  const [fees, setFees] = useState<number>(0);
-  const [sizeUsd, setSizeUsd] = useState<number>(0);
-  const [notes, setNotes] = useState("");
-  const [kind, setKind] = useState<TradeKind>("normal");
-  const [submitting, setSubmitting] = useState(false);
+  // perda máxima aconselhada (informativo) — 2% por defeito
+  const [maxLossPct, setMaxLossPct] = useState<number>(2);
+  const maxLossMoney = useMemo<number>(
+    () => Math.max(0, (balance || 0) * (maxLossPct / 100)),
+    [balance, maxLossPct]
+  );
 
-  // subscreve user para saber saldo, moeda e (se existir) preferências/multipliers
+  // saldo oculto
+  const [showBalance, setShowBalance] = useState<boolean>(false);
+
+  // quick buttons — multiplicadores por saldo
+  const [mode, setMode] = useState<QuickMode>("normal");
+  const SIZE_MULT: Record<QuickMode, number> = { curta: 1.8, normal: 3, longa: 6 };
+  const recommendedSize = useMemo<number>(
+    () => Math.max(0, (balance || 0) * SIZE_MULT[mode]),
+    [balance, mode]
+  );
+
+  // tamanho usado (na moeda da conta)
+  const [sizeUsed, setSizeUsed] = useState<number | "">("");
+
+  // live vs backfill
+  const [isLive, setIsLive] = useState<boolean>(true);
+
+  // campos para ordem não-live (retroativa)
+  const [openDate, setOpenDate] = useState<string>(""); // YYYY-MM-DD
+  const [openTime, setOpenTime] = useState<string>(""); // HH:MM
+  const [closeDate, setCloseDate] = useState<string>("");
+  const [closeTime, setCloseTime] = useState<string>("");
+  const [pnlInput, setPnlInput] = useState<number | "">("");
+  const [fees, setFees] = useState<number | "">("");
+  const [note, setNote] = useState<string>("");
+
+  const [saving, setSaving] = useState<boolean>(false);
+  const uid = auth.currentUser?.uid || null;
+
+  // Preencher tamanho usado por defeito quando ainda está vazio
   useEffect(() => {
-    const u = auth.currentUser;
-    if (!u) return;
-    const unsub = listenUser(u.uid, (ud) => setUserDoc(ud));
-    return () => unsub && unsub();
-  }, []);
+    if (sizeUsed === "") {
+      setSizeUsed(Number(recommendedSize.toFixed(2)));
+    }
+  }, [recommendedSize, sizeUsed]);
 
-  const currency = userDoc?.currency || "EUR";
-  const balance = userDoc?.currentBalance || 0;
+  // helpers
+  const applyQuick = (m: QuickMode) => {
+    setMode(m);
+    setSizeUsed(Number((balance * SIZE_MULT[m]).toFixed(2)));
+  };
 
-  const multipliers = useMemo(() => {
-    const prefs = (userDoc as any)?.preferences?.tradeMultipliers as
-      | { short: number; normal: number; long: number }
-      | undefined;
-    return {
-      short: prefs?.short ?? DEFAULT_MULTIPLIERS.short,
-      normal: prefs?.normal ?? DEFAULT_MULTIPLIERS.normal,
-      long: prefs?.long ?? DEFAULT_MULTIPLIERS.long,
-    };
-  }, [userDoc]);
+  const parseDateTime = (d: string, t: string): number | null => {
+    if (!d || !t) return null;
+    const ts = new Date(`${d}T${t}:00`);
+    const n = ts.getTime();
+    return Number.isFinite(n) ? n : null;
+  };
 
-  const suggestedSize = useMemo(() => {
-    const m = multipliers[kind];
-    return balance * m;
-  }, [balance, multipliers, kind]);
+  // validação básica
+  const canSubmit = useMemo<boolean>(() => {
+    if (!symbol.trim()) return false;
+    if (!uid) return false;
 
-  const sizeTooBig = sizeUsd > suggestedSize && suggestedSize > 0;
+    if (!isLive) {
+      const oa = parseDateTime(openDate, openTime);
+      const ca = parseDateTime(closeDate, closeTime);
+      if (!oa || !ca) return false;
+      if (pnlInput === "" || typeof pnlInput !== "number") return false;
+    }
+    return true;
+  }, [symbol, uid, isLive, openDate, openTime, closeDate, closeTime, pnlInput]);
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    if (!auth.currentUser) return;
-    if (!symbol.trim()) return;
+    if (!uid) {
+      alert("Precisas de iniciar sessão.");
+      return;
+    }
+    if (!canSubmit) return;
 
+    setSaving(true);
     try {
-      setSubmitting(true);
-      const t: Omit<Trade, "id"> = {
-        symbol: symbol.trim().toUpperCase(),
-        side: "n/a", // simplificado — lado não usado no teu fluxo
-        riskAmount: Number(riskAmount) || 0,
-        fees: Number(fees) || 0,
-        sizeUsd: Number(sizeUsd) || 0,
-        notes: notes.trim(),
-        status: "open",
-        openAt: Date.now(),
-        closedAt: null,
-        pnl: null,
-        r: null,
-        type: kind, // guarda o tipo de trade selecionado
-      } as any;
+      const sizeToPersist =
+        typeof sizeUsed === "number" && sizeUsed > 0
+          ? Number(sizeUsed.toFixed(2))
+          : Number(recommendedSize.toFixed(2));
 
-      await openTrade(auth.currentUser.uid, t);
+      if (isLive) {
+        // ordem ao vivo -> criar aberta agora
+        const now = Date.now();
+        const payload: Omit<Trade, "id"> = {
+          symbol: symbol.trim(),
+          side,
+          status: "open",
+          openAt: now,
+          riskAmount: Number(riskMoney.toFixed(2)),
+          fees: typeof fees === "number" ? fees : 0,
+          size: sizeToPersist, // tamanho na moeda da conta
+          note: note || "",
+        } as any;
 
-      // reset
-      setSymbol("");
-      setRiskAmount(0);
-      setFees(0);
-      setSizeUsd(0);
-      setNotes("");
-      setKind("normal");
+        await openTrade(uid, payload);
+        resetAfterSave(true);
+        toastOk("Ordem registada (live).");
+      } else {
+        // ordem retroativa -> cria aberta na data/hora indicada e depois fecha com PnL e fecho personalizados
+        const openAt = parseDateTime(openDate, openTime);
+        const closedAt = parseDateTime(closeDate, closeTime);
+        if (!openAt || !closedAt) throw new Error("Datas/horas inválidas.");
+        const pnl = Number(pnlInput || 0);
+        const f = Number(fees || 0);
+
+        // criar doc como 'open' com ID auto (para depois fechar via editTrade)
+        const ref = doc(tradesColRef(uid)); // doc com ID auto
+        const newId = ref.id;
+
+        const baseOpen: Trade = {
+          id: newId,
+          symbol: symbol.trim(),
+          side,
+          status: "open",
+          openAt,
+          riskAmount: Number(riskMoney.toFixed(2)),
+          fees: f,
+          size: sizeToPersist,
+          note: note || "",
+        } as any;
+
+        await setDoc(ref, baseOpen);
+
+        // fechar com os dados retroativos via editTrade (aplica delta no saldo)
+        const closed: Trade = {
+          ...baseOpen,
+          status: "closed",
+          pnl,
+          closedAt,
+        } as any;
+
+        await editTrade(uid, closed);
+        resetAfterSave(false);
+        toastOk("Ordem retroativa registada.");
+      }
+    } catch (err: unknown) {
+      console.error(err);
+      toastErr(err instanceof Error ? err.message : "Falha ao registar ordem.");
     } finally {
-      setSubmitting(false);
+      setSaving(false);
     }
   }
 
-  return (
-    <div className="card w-full max-w-full overflow-hidden">
-      <div className="p-4 sm:p-5">
-        <div className="flex items-start justify-between gap-3 mb-4">
-          <div className="min-w-0">
-            <h3 className="text-base sm:text-lg font-semibold leading-tight">
-              Abrir Trade
-            </h3>
-            <p className="text-xs sm:text-sm text-muted-foreground truncate">
-              {fmtMoney(suggestedSize, currency)}
-            </p>
-          </div>
+  const resetAfterSave = (keepLive: boolean) => {
+    setSymbol("");
+    setSide("long");
+    setRiskPct(1.5);
+    setMaxLossPct(2);
+    setMode("normal");
+    setSizeUsed("");
+    setFees("");
+    setNote("");
+    if (!keepLive) {
+      setOpenDate("");
+      setOpenTime("");
+      setCloseDate("");
+      setCloseTime("");
+      setPnlInput("");
+    }
+    setIsLive(keepLive);
+  };
 
-          {/* Selector do tipo de trade */}
-          <div className="shrink-0">
-            <div className="inline-flex rounded-xl border border-white/10 bg-white/5 p-1">
-              {(["short", "normal", "long"] as TradeKind[]).map((k) => (
-                <button
-                  key={k}
-                  type="button"
-                  onClick={() => setKind(k)}
-                  className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition min-w-0
-                    ${kind === k ? "bg-primary text-primary-foreground" : "hover:bg-white/10"}`}
-                >
-                  {KIND_LABEL[k]}
-                </button>
-              ))}
+  return (
+    <form onSubmit={handleSubmit} className="card space-y-5">
+      {/* Cabeçalho */}
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+        <h3 className="font-semibold flex items-center gap-2 text-lg">
+          <Rocket className="w-5 h-5 opacity-80" />
+          Registo de Ordem
+        </h3>
+
+        {/* Saldo (oculto por defeito) */}
+        <div className="flex items-center gap-2 text-sm self-start sm:self-auto">
+          <span className="opacity-70">Saldo:</span>
+          <span className="font-semibold tabular-nums">
+            {showBalance ? fmtMoney(balance || 0, currency) : "••••••"}
+          </span>
+          <button
+            type="button"
+            className="icon-btn"
+            title={showBalance ? "Ocultar" : "Mostrar"}
+            onClick={() => setShowBalance((v) => !v)}
+          >
+            {showBalance ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+          </button>
+        </div>
+      </div>
+
+      {/* Secção 1: Tamanhos rápidos + recomendado */}
+      <section className="space-y-3">
+        <div className="flex flex-wrap gap-2">
+          {(["curta", "normal", "longa"] as QuickMode[]).map((m) => (
+            <button
+              key={m}
+              type="button"
+              onClick={() => applyQuick(m)}
+              className={`chip ${mode === m ? "ring-emerald-500/40 bg-emerald-500/10" : ""}`}
+              title={`Aplicar modo ${labelMode(m)} (x${SIZE_MULT[m]} do saldo)`}
+            >
+              {labelMode(m)}
+            </button>
+          ))}
+        </div>
+
+        <div className="rounded-xl bg-neutral-900/70 ring-1 ring-white/10 p-3 flex items-center justify-between">
+          <div className="text-sm opacity-80">
+            <div className="font-medium">{labelMode(mode)}</div>
+            <div className="opacity-60">Antes de Ganhar tenta na perder</div>
+          </div>
+          <div className="text-right">
+            <div className="text-xs opacity-60">Tamanho recomendado</div>
+            <div className="font-semibold tabular-nums">
+              {fmtMoney(recommendedSize, currency)}
             </div>
           </div>
         </div>
+      </section>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          {/* GRID RESPONSIVA - nunca “sangra” em mobile */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-            <div className="min-w-0">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Símbolo
+      {/* Secção 2: Dados base */}
+      <section className="grid gap-3 sm:grid-cols-2">
+        <div>
+          <label className="label">Símbolo</label>
+          <input
+            className="input"
+            placeholder="ex.: EURUSD / BTCUSDT / AAPL"
+            value={symbol}
+            onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+          />
+        </div>
+        <div>
+          <label className="label">Lado</label>
+          <div className="flex gap-1">
+            <SegBtn
+              active={side === "long"}
+              onClick={() => setSide("long")}
+              label="Long"
+            />
+            <SegBtn
+              active={side === "short"}
+              onClick={() => setSide("short")}
+              label="Short"
+            />
+          </div>
+        </div>
+      </section>
+
+      {/* Secção 3: Risco & Limites */}
+      <section className="grid gap-3 md:grid-cols-4">
+        <div>
+          <label className="label">Risco (%)</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              className="input"
+              value={riskPct}
+              onChange={(e) => setRiskPct(Number(e.target.value))}
+            />
+            <span className="small opacity-70">
+              = {fmtMoney(riskMoney, currency)}
+            </span>
+          </div>
+        </div>
+
+        <div>
+          <label className="label">Perda máx. (%)</label>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              step="0.1"
+              min={0}
+              className="input"
+              value={maxLossPct}
+              onChange={(e) => setMaxLossPct(Number(e.target.value))}
+              title="Percentagem de perda máxima aconselhada (apenas informativo)"
+            />
+            <span className="small opacity-70">
+              = {fmtMoney(maxLossMoney, currency)}
+            </span>
+          </div>
+        </div>
+
+        <div className="md:col-span-2">
+          <label className="label">Tamanho usado (na moeda da conta)</label>
+          <input
+            type="number"
+            step="0.01"
+            className="input"
+            placeholder="ex.: 1500.00"
+            value={sizeUsed}
+            onChange={(e) =>
+              setSizeUsed(e.target.value === "" ? "" : Number(e.target.value))
+            }
+          />
+
+        </div>
+      </section>
+
+      {/* Secção 4: Live vs Retroativa */}
+      <section className="flex items-center gap-2">
+        <input
+          id="liveOrder"
+          type="checkbox"
+          className="scale-110 accent-emerald-500"
+          checked={isLive}
+          onChange={(e) => setIsLive(e.target.checked)}
+        />
+        <label htmlFor="liveOrder" className="select-none">
+          Ordem live
+        </label>
+      </section>
+
+      {/* Secção 5: Campos extra para ordem não-live */}
+      {!isLive && (
+        <section className="rounded-2xl bg-neutral-900/70 ring-1 ring-white/10 p-3 space-y-3">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label flex items-center gap-1">
+                <CalendarIcon className="w-4 h-4 opacity-70" /> Abertura — Data
               </label>
               <input
-                className="w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 outline-none focus:ring-2 focus:ring-primary/40"
-                placeholder="AAPL, EURUSD..."
-                value={symbol}
-                onChange={(e) => setSymbol(e.target.value)}
+                type="date"
+                className="input"
+                value={openDate}
+                onChange={(e) => setOpenDate(e.target.value)}
               />
             </div>
-
-            <div className="min-w-0">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Risco (€ / $)
+            <div>
+              <label className="label flex items-center gap-1">
+                <Clock className="w-4 h-4 opacity-70" /> Abertura — Hora
               </label>
               <input
-                type="number"
-                className="w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 outline-none focus:ring-2 focus:ring-primary/40"
-                value={riskAmount}
-                onChange={(e) => setRiskAmount(Number(e.target.value))}
+                type="time"
+                className="input"
+                value={openTime}
+                onChange={(e) => setOpenTime(e.target.value)}
               />
             </div>
+          </div>
 
-            <div className="min-w-0">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Taxas / Fees ({currency})
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div>
+              <label className="label flex items-center gap-1">
+                <CalendarIcon className="w-4 h-4 opacity-70" /> Fecho — Data
               </label>
               <input
+                type="date"
+                className="input"
+                value={closeDate}
+                onChange={(e) => setCloseDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="label flex items-center gap-1">
+                <Clock className="w-4 h-4 opacity-70" /> Fecho — Hora
+              </label>
+              <input
+                type="time"
+                className="input"
+                value={closeTime}
+                onChange={(e) => setCloseTime(e.target.value)}
+              />
+            </div>
+          </div>
+
+          <div className="grid gap-3 md:grid-cols-3">
+            <div>
+              <label className="label">PnL</label>
+              <input
                 type="number"
-                className="w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 outline-none focus:ring-2 focus:ring-primary/40"
+                step="0.01"
+                className="input"
+                value={pnlInput}
+                onChange={(e) =>
+                  setPnlInput(e.target.value === "" ? "" : Number(e.target.value))
+                }
+              />
+            </div>
+            <div>
+              <label className="label">Taxas/Fees</label>
+              <input
+                type="number"
+                step="0.01"
+                className="input"
                 value={fees}
-                onChange={(e) => setFees(Number(e.target.value))}
+                onChange={(e) =>
+                  setFees(e.target.value === "" ? "" : Number(e.target.value))
+                }
               />
             </div>
-
-            <div className="min-w-0 sm:col-span-2 lg:col-span-1">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Tamanho da Ordem (USD)
-              </label>
+            <div>
+              <label className="label">Nota (opcional)</label>
               <input
-                type="number"
-                className={`w-full min-w-0 rounded-xl border px-3 py-2 outline-none focus:ring-2
-                 ${sizeTooBig ? "border-red-400/60 bg-red-500/5 focus:ring-red-400/40" : "border-white/10 bg-white/5 focus:ring-primary/40"}`}
-                value={sizeUsd}
-                onChange={(e) => setSizeUsd(Number(e.target.value))}
-              />
-              {sizeTooBig && (
-                <p className="mt-1 text-[11px] text-red-300">
-                  Acima do aconselhado ({fmtMoney(suggestedSize, currency)}).
-                </p>
-              )}
-            </div>
-
-            <div className="min-w-0 sm:col-span-2 lg:col-span-3">
-              <label className="block text-xs font-medium text-muted-foreground mb-1">
-                Notas (opcional)
-              </label>
-              <textarea
-                rows={3}
-                className="w-full min-w-0 rounded-xl border border-white/10 bg-white/5 px-3 py-2 outline-none focus:ring-2 focus:ring-primary/40"
-                value={notes}
-                onChange={(e) => setNotes(e.target.value)}
-                placeholder="Contexto da trade, ideia, setup..."
+                className="input"
+                placeholder="ex.: set-up, broker, etc."
+                value={note}
+                onChange={(e) => setNote(e.target.value)}
               />
             </div>
           </div>
+        </section>
+      )}
 
-          <div className="flex flex-wrap items-center gap-2 pt-2">
-            <button
-              type="submit"
-              disabled={submitting || !symbol.trim()}
-              className="rounded-xl bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:opacity-90 disabled:opacity-50"
-            >
-              {submitting ? "A abrir..." : "Abrir Trade"}
-            </button>
-            <div className="text-xs text-muted-foreground">
-              Saldo: <span className="font-medium">{fmtMoney(balance, currency)}</span>
-            </div>
-          </div>
-        </form>
+      {/* Ações */}
+      <div className="flex items-center justify-end gap-2 pt-1">
+        <button
+          type="button"
+          className="btn ghost"
+          onClick={() => resetAfterSave(true)}
+          disabled={saving}
+        >
+          Limpar
+        </button>
+        <button type="submit" className="btn" disabled={!canSubmit || saving}>
+          {saving ? (
+            <>
+              <Clock className="w-4 h-4 animate-spin" />
+              <span>A guardar…</span>
+            </>
+          ) : (
+            <>
+              <Plus className="w-4 h-4" />
+              <span>
+                {isLive ? "Registar ordem live" : "Registar ordem retroativa"}
+              </span>
+            </>
+          )}
+        </button>
       </div>
-    </div>
+    </form>
   );
+}
+
+/* ----------------- Sub-componentes & utils ----------------- */
+
+function SegBtn({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`px-3 py-2 rounded-lg ring-1 text-sm ${
+        active
+          ? "bg-emerald-500/10 ring-emerald-500/40"
+          : "bg-neutral-800/40 ring-white/10 hover:bg-neutral-800/60"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
+function labelMode(m: QuickMode): string {
+  if (m === "curta") return "Curta";
+  if (m === "longa") return "Longa";
+  return "Normal";
+}
+
+// toasts simples (podes ligar ao teu sistema)
+function toastOk(msg: string) {
+  if (typeof window !== "undefined") console.log(msg);
+}
+function toastErr(msg: string) {
+  if (typeof window !== "undefined") console.error(msg);
 }

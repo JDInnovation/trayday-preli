@@ -1,29 +1,31 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import dynamic from "next/dynamic";
-import { MonthAggDay, Trade } from "@/lib/types";
-import { pad2, ymd } from "@/lib/utils";
-import {
-  ChevronDown,
-  ChevronRight,
-  Activity,
-  X,
-  ArrowRight,
-  TrendingUp,
-  TrendingDown,
-} from "lucide-react";
+import React, { useEffect, useMemo, useState } from "react";
+import { Plus, ChevronLeft, ChevronRight, TrendingDown, TrendingUp, X, Info } from "lucide-react";
+import { fmtMoney, monthLabel, ymd } from "@/lib/utils";
+import type { Trade } from "@/lib/types";
+import { useRouter } from "next/navigation";
 
-const DayPnlSparkline = dynamic(
-  () => import("@/components/charts/DayPnlSparkline"),
-  { ssr: false }
-);
+type DayInfo = {
+  key: string;          // YYYY-MM-DD
+  date: Date;
+  pnl: number;          // PnL de trades FECHADAS do dia
+  trades: number;       // total trades (abertas+fechadas) no dia
+  hasTrades: boolean;
+  dd: number;           // drawdown cumulativo (se vieres a usar)
+  pctCumul: number;     // % acumulada até ao dia
+  isToday: boolean;
+  openEq: number;
+  closeEq: number;
+  highEq: number;
+  lowEq: number;
+};
 
 export default function CalendarMonth({
   y,
   m,
   daily,
-  tradesByDay, // mapa dia -> trades
+  tradesByDay,
   currency,
   onPrev,
   onNext,
@@ -32,7 +34,7 @@ export default function CalendarMonth({
 }: {
   y: number;
   m: number;
-  daily: MonthAggDay[];
+  daily: DayInfo[];
   tradesByDay: Record<string, Trade[]>;
   currency: string;
   onPrev: () => void;
@@ -40,458 +42,408 @@ export default function CalendarMonth({
   onPickMonth: (y: number, m: number) => void;
   onAnnual: () => void;
 }) {
-  const labels = ["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"];
-  const mv = `${y}-${pad2(m + 1)}`;
-  const s = new Date(y, m, 1);
-  // Começa a semana na 2ª feira
-  const startOffset = (s.getDay() + 6) % 7;
+  const router = useRouter();
+  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [mobileDay, setMobileDay] = useState<DayInfo | null>(null);
 
-  const blanks = useMemo(
-    () => Array.from({ length: startOffset }, (_, i) => <div key={`b-${i}`} />),
-    [startOffset]
+  // Responsividade simples
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const fn = () => setIsMobile(window.innerWidth < 768);
+    fn();
+    window.addEventListener("resize", fn);
+    return () => window.removeEventListener("resize", fn);
+  }, []);
+
+  // Dia -> trades + totais
+  const dayMap = useMemo(() => {
+    const map: Record<string, { pnl: number; trades: number; list: Trade[] }> = {};
+    for (const d of daily) {
+      const list = tradesByDay[d.key] || [];
+      const closed = list.filter((t) => t.status === "closed");
+      const pnl = closed.reduce((a, t) => a + (t.pnl || 0), 0);
+      map[d.key] = { pnl, trades: list.length, list };
+    }
+    return map;
+  }, [daily, tradesByDay]);
+
+  // Navegação do mês
+  const title = `${monthLabel(y, m)} ${y}`;
+
+  // Ação do "+" — em mobile e desktop: leva ao registo com data do dia
+  const goAddTradeForDay = (key: string) => {
+    router.push(`/dashboard?day=${key}#records`);
+  };
+
+  // Cabeçalho do calendário
+  const WeekHeader = () => (
+    <div className="grid grid-cols-7 text-xs uppercase tracking-wide opacity-70 px-1">
+      {["Seg", "Ter", "Qua", "Qui", "Sex", "Sáb", "Dom"].map((d) => (
+        <div key={d} className="p-2 text-center">{d}</div>
+      ))}
+    </div>
   );
 
-  // Expansão de dia (apenas um aberto)
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
-  const toggle = (key: string) =>
-    setExpandedKey((k) => (k === key ? null : key));
+  // Grelha de dias
+  const Grid = () => {
+    const first = new Date(y, m, 1);
+    const firstWeekday = (first.getDay() + 6) % 7; // segunda=0
+    const daysInMonth = new Date(y, m + 1, 0).getDate();
+    const cells: Array<{ date: Date | null; key?: string }> = [];
 
-  // Pop-up do gráfico diário (desktop-only)
-  const [chartForKey, setChartForKey] = useState<string | null>(null);
-  const closeChart = () => setChartForKey(null);
+    for (let i = 0; i < firstWeekday; i++) cells.push({ date: null });
+    for (let d = 1; d <= daysInMonth; d++) {
+      const date = new Date(y, m, d);
+      const key = ymd(date);
+      cells.push({ date, key });
+    }
+    // completa última semana
+    while (cells.length % 7 !== 0) cells.push({ date: null });
 
-  // ESC fecha o pop-up
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") closeChart();
-    };
-    if (chartForKey) window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [chartForKey]);
-
-  const fmtMoney = (v: number) =>
-    v.toLocaleString(undefined, { style: "currency", currency });
-
-  const sideBadge = (side?: string) => {
-    const isLong = (side || "").toUpperCase() === "LONG";
-    const cls = isLong
-      ? "bg-emerald-500/15 text-emerald-400"
-      : "bg-red-500/15 text-red-400";
     return (
-      <span className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${cls}`}>
-        {side || "—"}
-      </span>
+      <div className="grid grid-cols-7 gap-1">
+        {cells.map((c, idx) => {
+          if (!c.date) {
+            return <div key={idx} className="h-24 rounded-lg bg-neutral-800/30" />;
+          }
+          const key = c.key!;
+          const d = daily.find((x) => x.key === key)!;
+          const meta = dayMap[key] || { pnl: 0, trades: 0, list: [] };
+          const isPast = c.date.getTime() < new Date(new Date().toDateString()).getTime();
+          const color =
+            meta.trades > 0
+              ? meta.pnl >= 0
+                ? "ring-emerald-500/40 bg-emerald-500/10"
+                : "ring-rose-500/40 bg-rose-500/10"
+              : "bg-neutral-800/30 opacity-70"; // dias sem registos a cinza
+
+          const content = (
+            <div className={`rounded-xl p-2 ring-1 ${color} hover:opacity-100 transition`}>
+              <div className="flex items-center justify-between gap-2">
+                <div className={`text-sm ${d.isToday ? "font-bold" : "opacity-80"}`}>
+                  {c.date.getDate()}
+                </div>
+                {/* botão + para dias passados */}
+                {isPast && (
+                  <button
+                    className="icon-btn !p-1 opacity-80 hover:opacity-100"
+                    title="Adicionar trade neste dia"
+                    onClick={(ev) => {
+                      ev.stopPropagation();
+                      if (isMobile) {
+                        setMobileDay(d);
+                      } else {
+                        goAddTradeForDay(key);
+                      }
+                    }}
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* linhas compactas (cada parâmetro na sua linha) */}
+              <div className="mt-1 space-y-0.5 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="opacity-70">Trades</span>
+                  <span className="font-medium">{meta.trades}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="opacity-70">PnL</span>
+                  <span className={`font-semibold ${meta.pnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+                    {fmtMoney(meta.pnl, currency)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="opacity-70">% acum.</span>
+                  <span className="font-medium">{d.pctCumul.toFixed(2)}%</span>
+                </div>
+              </div>
+            </div>
+          );
+
+          // Interação
+          const onClick = () => {
+            if (isMobile) {
+              setMobileDay(d);
+            } else {
+              setExpandedKey((cur) => (cur === key ? null : key));
+              // opcional: rolar o painel expandido para vista
+              setTimeout(() => {
+                const el = document.getElementById("cal-expanded-panel");
+                if (el) el.scrollIntoView({ behavior: "smooth", block: "start" });
+              }, 0);
+            }
+          };
+
+          return (
+            <div key={key}>
+              <button className="w-full text-left" onClick={onClick}>
+                {content}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     );
   };
 
+  // dados do painel expandido (desktop)
+  const selectedDay = expandedKey ? daily.find((x) => x.key === expandedKey) || null : null;
+  const selectedMeta = expandedKey ? dayMap[expandedKey || ""] : null;
+
   return (
-    <div className="card" id="calendarCard">
-      {/* Header de navegação */}
-      <div className="flex items-center justify-between gap-2 mb-3 flex-wrap">
-        <div className="flex items-center gap-2 flex-wrap">
-          <button className="btn-ghost" onClick={onPrev} aria-label="Mês anterior">
-            «
+    <div className="card">
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <button className="icon-btn" onClick={onPrev} title="Mês anterior">
+            <ChevronLeft className="w-4 h-4" />
           </button>
-          <input
-            className="input"
-            type="month"
-            value={mv}
-            onChange={(e) => {
-              const [yy, mm] = e.target.value.split("-").map((v) => parseInt(v, 10));
-              onPickMonth(yy, mm - 1);
-            }}
-            aria-label="Selecionar mês"
-          />
-          <button className="btn-ghost" onClick={onNext} aria-label="Mês seguinte">
-            »
+        <div className="font-semibold">{title}</div>
+          <button className="icon-btn" onClick={onNext} title="Mês seguinte">
+            <ChevronRight className="w-4 h-4" />
           </button>
-          <span className="small text-sub">
-            Legenda: Δ% cumul = % vs. início • #trades = número de ordens do dia
-          </span>
         </div>
-        <div>
-          <button className="btn" onClick={onAnnual}>
-            Performance anual
+
+        <div className="flex items-center gap-2">
+          <button className="chip" onClick={onAnnual}>
+            <Info className="w-4 h-4" />
+            <span>Vista anual</span>
           </button>
         </div>
       </div>
 
-      {/* Cabeçalhos dos dias da semana */}
-      <div className="overflow-x-auto">
-        <div className="grid grid-cols-7 gap-2 min-w-[700px] mb-1">
-          {labels.map((l) => (
-            <div key={l} className="text-center text-sub text-xs">
-              {l}
+      <WeekHeader />
+      <Grid />
+
+      {/* Painel expandido LARGO (desktop) */}
+      {!isMobile && selectedDay && selectedMeta && (
+        <div id="cal-expanded-panel" className="mt-3 rounded-2xl bg-neutral-900/95 ring-1 ring-white/10 p-4 shadow-2xl">
+          <div className="flex items-center justify-between gap-2 mb-3">
+            <div className="text-sm opacity-80">{selectedDay.date.toLocaleDateString()}</div>
+            <div className="flex items-center gap-2">
+              <button
+                className="chip"
+                onClick={() => goAddTradeForDay(selectedDay.key)}
+                title="Adicionar trade neste dia"
+              >
+                <Plus className="w-4 h-4" />
+                <span>Adicionar trade</span>
+              </button>
+              <button className="icon-btn" onClick={() => setExpandedKey(null)} title="Fechar">
+                <X className="w-4 h-4" />
+              </button>
             </div>
-          ))}
-        </div>
+          </div>
 
-        {/* Grelha de dias */}
-        <div className="grid grid-cols-7 gap-3 min-w-[700px]">
-          {blanks}
-          {daily.map((d) => {
-            const posNeg =
-              d.pnl > 0
-                ? "outline outline-1 outline-ok/40"
-                : d.pnl < 0
-                ? "outline outline-1 outline-danger/40"
-                : "";
-            const tileCls = [
-              "group border border-line rounded-xl p-2 md:p-3 bg-[#0f172a]",
-              "transition-colors hover:bg-slate-800/40 focus-within:ring-1 focus-within:ring-brand",
-              "min-h-[120px] flex flex-col gap-1",
-              d.hasTrades ? posNeg : "opacity-70",
-              d.isToday ? "ring-2 ring-brand" : "",
-            ].join(" ");
+          {/* Layout mais organizado: métricas à esquerda + lista à direita (em ecrãs grandes) */}
+          <div className="grid lg:grid-cols-3 gap-3">
+            {/* Métricas do dia */}
+            <div className="lg:col-span-1 space-y-2">
+              <MetricRow label="Trades" value={`${selectedMeta.trades}`} />
+              <MetricRow
+                label="PnL do dia"
+                value={fmtMoney(selectedMeta.pnl, currency)}
+                tone={selectedMeta.pnl >= 0 ? "pos" : "neg"}
+                icon={selectedMeta.pnl >= 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
+              />
+              <MetricRow label="% acumulada" value={`${selectedDay.pctCumul.toFixed(2)}%`} />
+              <MetricRow label="Equity (abertura)" value={fmtMoney(selectedDay.openEq || 0, currency)} />
+              <MetricRow label="Equity (máx.)" value={fmtMoney(selectedDay.highEq || 0, currency)} />
+              <MetricRow label="Equity (mín.)" value={fmtMoney(selectedDay.lowEq || 0, currency)} />
+              <MetricRow label="Equity (fecho)" value={fmtMoney(selectedDay.closeEq || 0, currency)} />
+            </div>
 
-            const isOpen = expandedKey === d.key;
-
-            // Série do gráfico do dia (acumulado por trade fechada)
-            const spark = (() => {
-              const trades = (tradesByDay[d.key] || [])
-                .filter((t) => t.status === "closed" && ymd(new Date(t.closedAt!)) === d.key)
-                .sort((a, b) => a.closedAt! - b.closedAt!);
-              let acc = 0;
-              const arr = [{ idx: "0", v: 0 }];
-              trades.forEach((t, i) => {
-                acc += t.pnl || 0;
-                arr.push({ idx: String(i + 1), v: acc });
-              });
-              if (arr.length === 1) arr.push({ idx: "1", v: 0 });
-              return arr;
-            })();
-
-            // trades do dia (compacto)
-            const tradesList = (tradesByDay[d.key] || [])
-              .filter((t) => t.status === "closed" && ymd(new Date(t.closedAt!)) === d.key)
-              .sort((a, b) => a.closedAt! - b.closedAt!)
-              .slice(0, 5);
-
-            return (
-              <>
-                {/* TILE do dia */}
-                <div key={d.key} className={tileCls}>
-                  {/* Cabeçalho do dia + ações */}
-                  <button
-                    className="flex items-center justify-between w-full text-left"
-                    onClick={() => toggle(d.key)}
-                    aria-expanded={isOpen}
-                    aria-controls={`day-panel-${d.key}`}
-                    title={isOpen ? "Esconder detalhes" : "Ver detalhes"}
-                  >
-                    <div className="flex items-center gap-2">
-                      <span className="font-bold text-slate-300 text-sm md:text-base">
-                        {d.date.getDate()}
-                      </span>
-                      {/* Badge #trades (compacto) */}
-                      <span
-                        className={`px-2 py-0.5 rounded-full text-[11px] font-semibold ${
-                          d.trades > 0
-                            ? "bg-slate-500/10 text-slate-300"
-                            : "bg-slate-500/5 text-slate-400"
-                        }`}
-                      >
-                        {d.trades} {d.trades === 1 ? "trade" : "trades"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {/* PnL do dia */}
-                      <span
-                        className={`text-xs md:text-sm ${
-                          d.pnl >= 0 ? "text-ok" : d.pnl < 0 ? "text-danger" : "text-sub"
-                        }`}
-                      >
-                        {d.hasTrades ? d.pnl.toFixed(2) : "—"}
-                      </span>
-                      {isOpen ? (
-                        <ChevronDown className="w-4 h-4 text-sub" />
-                      ) : (
-                        <ChevronRight className="w-4 h-4 text-sub" />
-                      )}
-                    </div>
-                  </button>
-
-                  {/* Linha Δ% acumulado (sempre visível) */}
-                  <div className="flex items-center justify-between mt-1">
-                    <span className="small text-sub">Δ% cumul</span>
-                    <span
-                      className={`small font-semibold ${
-                        d.pctCumul >= 0 ? "text-ok" : "text-danger"
-                      }`}
-                    >
-                      {d.hasTrades ? `${d.pctCumul.toFixed(2)}%` : "—"}
-                    </span>
-                  </div>
-
-                  {/* Painel expandido inline (apenas MOBILE) */}
-                  {isOpen && (
-                    <div
-                      id={`day-panel-${d.key}`}
-                      className="mt-2 rounded-lg border border-line/70 bg-muted/40 p-2 md:hidden"
-                    >
-                      <InlinePanel
-                        d={d}
-                        tradesList={tradesList}
-                        onOpenChart={() => setChartForKey(d.key)}
-                        currency={currency}
-                        sideBadge={sideBadge}
-                        fmtMoney={fmtMoney}
-                      />
-                    </div>
-                  )}
-                </div>
-
-                {/* Painel expandido FULL-WIDTH (apenas DESKTOP) */}
-                {isOpen && (
-                  <div
-                    key={`${d.key}-full`}
-                    className="hidden md:block col-span-7 col-start-1"
-                  >
-                    <div className="rounded-xl border border-line bg-muted/40 p-3">
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="font-semibold">
-                          {new Date(d.key).toLocaleDateString("pt-PT", {
-                            weekday: "long",
-                            year: "numeric",
-                            month: "long",
-                            day: "2-digit",
-                          })}
-                        </div>
-                        <button
-                          type="button"
-                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-800/60 text-sub"
-                          title="Ver gráfico do dia"
-                          onClick={() => setChartForKey(d.key)}
-                        >
-                          <Activity className="w-4 h-4" />
-                          <span className="text-xs">gráfico</span>
-                        </button>
-                      </div>
-
-                      {/* GRID 2 colunas em desktop */}
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                        {/* Coluna esquerda: métricas */}
-                        <div className="flex flex-col gap-2">
-                          <div className="rounded-lg border border-line bg-slate-900/40 p-3">
-                            <div className="text-sub text-xs mb-1">Equity</div>
-                            <div className="flex items-center gap-2 font-medium">
-                              <span>{fmtMoney(d.openEq)}</span>
-                              <ArrowRight className="w-4 h-4 text-sub" />
-                              <span>{fmtMoney(d.closeEq)}</span>
-                            </div>
-                          </div>
-
-                          <div className="grid grid-cols-2 gap-2">
-                            <KpiChip
-                              label="PnL do dia"
-                              value={fmtMoney(d.pnl)}
-                              positive={d.pnl >= 0}
-                            />
-                            <KpiChip
-                              label="Δ% acumul"
-                              value={`${d.pctCumul.toFixed(2)}%`}
-                              positive={d.pctCumul >= 0}
-                            />
-                            <KpiChip
-                              label="Drawdown (cum.)"
-                              value={fmtMoney(d.dd)}
-                              positive={false}
-                              danger
-                            />
-                            <KpiChip label="# de trades" value={`${d.trades}`} />
-                          </div>
-                        </div>
-
-                        {/* Coluna direita: lista de trades */}
-                        <div className="rounded-lg border border-line bg-slate-900/40 p-2">
-                          <div className="text-sub text-xs mb-2">
-                            Trades do dia (fechadas)
-                          </div>
-                          {tradesList.length === 0 ? (
-                            <div className="small text-sub">Sem trades fechadas.</div>
-                          ) : (
-                            <ul className="flex flex-col gap-1">
-                              {tradesList.map((t) => {
-                                const pn = t.pnl || 0;
-                                const pos = pn >= 0;
-                                return (
-                                  <li
-                                    key={t.id}
-                                    className="flex items-center justify-between gap-2 text-sm"
-                                  >
-                                    <div className="flex items-center gap-2">
-                                      {sideBadge(t.side)}
-                                      <span className="font-medium">{t.symbol}</span>
-                                      <span className="text-sub text-xs">
-                                        {new Date(t.closedAt!).toLocaleTimeString("pt-PT", {
-                                          hour: "2-digit",
-                                          minute: "2-digit",
-                                        })}
-                                      </span>
-                                    </div>
-                                    <div
-                                      className={`font-semibold ${
-                                        pos ? "text-ok" : "text-danger"
-                                      } flex items-center gap-1`}
-                                    >
-                                      {pos ? (
-                                        <TrendingUp className="w-3.5 h-3.5" />
-                                      ) : (
-                                        <TrendingDown className="w-3.5 h-3.5" />
-                                      )}
-                                      {pn.toFixed(2)}
-                                    </div>
-                                  </li>
-                                );
-                              })}
-                            </ul>
-                          )}
-                        </div>
-                      </div>
-                    </div>
+            {/* Lista de trades */}
+            <div className="lg:col-span-2">
+              <div className="rounded-xl bg-neutral-800/50 ring-1 ring-white/10 p-2 max-h-72 overflow-auto">
+                {selectedMeta.list.length === 0 ? (
+                  <div className="small opacity-70">Sem registos para este dia.</div>
+                ) : (
+                  <div className="space-y-1">
+                    {selectedMeta.list.map((t) => (
+                      <TradeRow key={t.id} t={t} currency={currency} />
+                    ))}
                   </div>
                 )}
-
-                {/* POP-UP do gráfico diário (desktop only) */}
-                {chartForKey === d.key && (
-                  <div
-                    className="hidden md:grid fixed inset-0 z-50 place-items-center p-4"
-                    role="dialog"
-                    aria-modal="true"
-                  >
-                    {/* backdrop */}
-                    <div
-                      className="absolute inset-0 bg-black/50"
-                      onClick={closeChart}
-                      aria-hidden="true"
-                    />
-                    {/* content */}
-                    <div className="relative max-w-xl w-full card">
-                      <div className="flex items-center justify-between mb-2">
-                        <h4 className="font-semibold">
-                          PnL do dia — {new Date(d.key).toLocaleDateString("pt-PT")}
-                        </h4>
-                        <button
-                          className="btn-ghost"
-                          onClick={closeChart}
-                          aria-label="Fechar"
-                          title="Fechar"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                      <DayPnlSparkline data={spark} currency={currency} />
-                      <div className="text-sub small mt-2">
-                        Acumulado por trade fechada nesse dia (inicia em 0).
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </>
-            );
-          })}
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      )}
+
+      {/* Modal mobile */}
+      {mobileDay && (
+        <MobileDayModal
+          day={mobileDay}
+          trades={dayMap[mobileDay.key]?.list || []}
+          pnl={dayMap[mobileDay.key]?.pnl || 0}
+          currency={currency}
+          canAdd={mobileDay.date.getTime() < new Date(new Date().toDateString()).getTime()}
+          onAdd={() => {
+            goAddTradeForDay(mobileDay.key);
+            setMobileDay(null);
+          }}
+          onClose={() => setMobileDay(null)}
+        />
+      )}
     </div>
   );
 }
 
-/** Chip de KPI reutilizável */
-function KpiChip({
+/* ---------- Sub-componentes ---------- */
+
+function MetricRow({
   label,
   value,
-  positive,
-  danger,
+  tone,
+  icon,
 }: {
   label: string;
   value: string;
-  positive?: boolean;
-  danger?: boolean;
+  tone?: "pos" | "neg";
+  icon?: React.ReactNode;
 }) {
-  const color = danger ? "text-danger" : positive === undefined ? "text-slate-200" : positive ? "text-ok" : "text-danger";
+  const toneCls = tone === "pos" ? "text-emerald-400" : tone === "neg" ? "text-rose-400" : "text-white";
   return (
-    <div className="rounded-lg border border-line bg-slate-900/40 p-2">
-      <div className="text-sub text-[11px]">{label}</div>
-      <div className={`font-semibold ${color}`}>{value}</div>
+    <div className="flex items-center justify-between rounded-lg bg-neutral-800/40 ring-1 ring-white/10 px-3 py-2">
+      <div className="small opacity-80">{label}</div>
+      <div className={`flex items-center gap-2 font-semibold ${toneCls}`}>
+        {icon}
+        <span>{value}</span>
+      </div>
     </div>
   );
 }
 
-/** Painel inline (mobile) com o mesmo conteúdo, compacto */
-function InlinePanel({
-  d,
-  tradesList,
-  onOpenChart,
+function ExpandedDay({
+  date,
+  list,
+  pnl,
   currency,
-  sideBadge,
-  fmtMoney,
+  onAdd,
+  onClose,
 }: {
-  d: MonthAggDay;
-  tradesList: Trade[];
-  onOpenChart: () => void;
+  date: Date;
+  list: Trade[];
+  pnl: number;
   currency: string;
-  sideBadge: (side?: string) => JSX.Element;
-  fmtMoney: (v: number) => string;
+  onAdd: () => void;
+  onClose: () => void;
+}) {
+  // (não usado agora — mantido se quiseres reutilizar)
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between">
+        <div className="text-sm opacity-80">
+          {date.toLocaleDateString()}
+        </div>
+        <div className="flex items-center gap-2">
+          <button className="chip" onClick={onAdd} title="Adicionar trade neste dia">
+            <Plus className="w-4 h-4" />
+            <span>Adicionar trade</span>
+          </button>
+          <button className="icon-btn" onClick={onClose} title="Fechar">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+
+      <DaySummary pnl={pnl} currency={currency} />
+
+      <div className="space-y-1 max-h-60 overflow-auto pr-1">
+        {list.length === 0 ? (
+          <div className="small opacity-70">Sem registos para este dia.</div>
+        ) : (
+          list.map((t) => <TradeRow key={t.id} t={t} currency={currency} />)
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MobileDayModal({
+  day,
+  trades,
+  pnl,
+  currency,
+  canAdd,
+  onAdd,
+  onClose,
+}: {
+  day: { date: Date; key: string };
+  trades: Trade[];
+  pnl: number;
+  currency: string;
+  canAdd: boolean;
+  onAdd: () => void;
+  onClose: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <div className="text-sub text-xs">Equity</div>
-        <button
-          type="button"
-          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-800/60 text-sub"
-          title="Ver gráfico do dia"
-          onClick={(e) => {
-            e.stopPropagation();
-            onOpenChart();
-          }}
-        >
-          <Activity className="w-4 h-4" />
-          <span className="text-xs">gráfico</span>
-        </button>
-      </div>
-      <div className="flex items-center gap-2 font-medium">
-        <span>{fmtMoney(d.openEq)}</span>
-        <ArrowRight className="w-4 h-4 text-sub" />
-        <span>{fmtMoney(d.closeEq)}</span>
-      </div>
+    <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative w-full sm:w-[560px] max-h-[80vh] overflow-auto rounded-t-2xl sm:rounded-2xl bg-neutral-900 ring-1 ring-white/10 p-3 sm:p-4">
+        <div className="flex items-center justify-between mb-2">
+          <div className="font-semibold">{day.date.toLocaleDateString()}</div>
+          <button className="icon-btn" onClick={onClose} title="Fechar">
+            <X className="w-4 h-4" />
+          </button>
+        </div>
 
-      <div className="grid grid-cols-2 gap-2">
-        <KpiChip label="PnL do dia" value={fmtMoney(d.pnl)} positive={d.pnl >= 0} />
-        <KpiChip label="Δ% acumul" value={`${d.pctCumul.toFixed(2)}%`} positive={d.pctCumul >= 0} />
-        <KpiChip label="Drawdown (cum.)" value={fmtMoney(d.dd)} danger />
-        <KpiChip label="# de trades" value={`${d.trades}`} />
-      </div>
+        <DaySummary pnl={pnl} currency={currency} />
 
-      <div className="rounded-lg border border-line bg-slate-900/40 p-2">
-        <div className="text-sub text-xs mb-2">Trades do dia (fechadas)</div>
-        {tradesList.length === 0 ? (
-          <div className="small text-sub">Sem trades fechadas.</div>
-        ) : (
-          <ul className="flex flex-col gap-1">
-            {tradesList.map((t) => {
-              const pn = t.pnl || 0;
-              const pos = pn >= 0;
-              return (
-                <li key={t.id} className="flex items-center justify-between gap-2 text-sm">
-                  <div className="flex items-center gap-2">
-                    {sideBadge(t.side)}
-                    <span className="font-medium">{t.symbol}</span>
-                    <span className="text-sub text-xs">
-                      {new Date(t.closedAt!).toLocaleTimeString("pt-PT", {
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </div>
-                  <div className={`font-semibold ${pos ? "text-ok" : "text-danger"}`}>
-                    {pn.toFixed(2)}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
+        <div className="mt-2 space-y-1">
+          {trades.length === 0 ? (
+            <div className="small opacity-70">Sem registos para este dia.</div>
+          ) : (
+            trades.map((t) => <TradeRow key={t.id} t={t} currency={currency} />)
+          )}
+        </div>
+
+        {canAdd && (
+          <div className="mt-3">
+            <button className="btn w-full" onClick={onAdd}>
+              <Plus className="w-4 h-4" />
+              <span>Adicionar trade neste dia</span>
+            </button>
+          </div>
         )}
+      </div>
+    </div>
+  );
+}
+
+function DaySummary({ pnl, currency }: { pnl: number; currency: string }) {
+  const PosIcon = pnl >= 0 ? TrendingUp : TrendingDown;
+  return (
+    <div className="flex items-center justify-between rounded-xl bg-neutral-800/60 ring-1 ring-white/10 px-3 py-2">
+      <div className="small opacity-80">Resumo do dia</div>
+      <div className={`flex items-center gap-2 font-semibold ${pnl >= 0 ? "text-emerald-400" : "text-rose-400"}`}>
+        <PosIcon className="w-4 h-4" />
+        <span>{fmtMoney(pnl, currency)}</span>
+      </div>
+    </div>
+  );
+}
+
+function sideBadge(side?: string) {
+  if (!side) return null;
+  const cls =
+    side.toLowerCase() === "long"
+      ? "bg-emerald-500/15 text-emerald-300 ring-emerald-500/30"
+      : "bg-rose-500/15 text-rose-300 ring-rose-500/30";
+  return <span className={`px-1.5 py-0.5 rounded-md ring-1 text-[10px] uppercase tracking-wide ${cls}`}>{side}</span>;
+}
+
+function TradeRow({ t, currency }: { t: Trade; currency: string }) {
+  return (
+    <div className="flex items-center justify-between rounded-lg bg-neutral-800/40 ring-1 ring-white/10 px-2 py-1.5">
+      <div className="flex items-center gap-2">
+        {sideBadge(t.side as any)}
+        <div className="text-sm font-medium">{t.symbol || t.ticker || "—"}</div>
+      </div>
+      <div className={`text-sm font-semibold ${((t.pnl || 0) >= 0) ? "text-emerald-400" : "text-rose-400"}`}>
+        {t.status === "closed" ? fmtMoney(t.pnl || 0, currency) : "Aberta"}
       </div>
     </div>
   );
