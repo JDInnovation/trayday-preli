@@ -5,6 +5,7 @@ export type TradeTypeKey = "curta" | "normal" | "longa";
 export interface Trade {
   id: string;
   symbol: string;
+  ticker?: string;
   side: TradeSide;
   riskPct: number;
   riskAmount: number;
@@ -52,3 +53,4 @@ export interface MonthAggDay {
   highEq: number;
   lowEq: number;
 }
+
