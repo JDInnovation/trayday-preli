@@ -358,3 +358,5 @@ html[data-theme="light"] {
   outline-offset: 2px;
 }
 
+.icon-btn { @apply inline-flex items-center justify-center rounded-md p-1.5 bg-white/0 hover:bg-white/10 ring-1 ring-white/10 transition; }
+

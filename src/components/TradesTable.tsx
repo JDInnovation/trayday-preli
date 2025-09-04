@@ -1,18 +1,21 @@
 "use client";
 
+import React, { useMemo, useState } from "react";
 import { Trade } from "@/lib/types";
-import { useMemo, useState } from "react";
 import { closeTrade, editTrade } from "@/lib/firestore";
 import { auth } from "@/lib/firebase.client";
 import { typeFactor } from "@/lib/utils";
-import { Pencil, ChevronDown, ChevronRight } from "lucide-react";
+import { Pencil, ChevronDown, ChevronRight, Trash2, X } from "lucide-react";
+import { deleteTrade } from "@/lib/trades";
 
 const PAGE_SIZE = 10;
 
 export default function TradesTable({ trades }: { trades: Trade[] }) {
   const [page, setPage] = useState(0);
   const [pnlInputs, setPnlInputs] = useState<Record<string, string>>({});
-  const [expanded, setExpanded] = useState<Record<string, boolean>>({}); // mobile: detalhes por linha
+  const [expanded, setExpanded] = useState<Record<string, boolean>>({});
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+  const [busyDelete, setBusyDelete] = useState(false);
 
   const totalPages = Math.max(1, Math.ceil(trades.length / PAGE_SIZE));
 
@@ -84,6 +87,21 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
     }
 
     await editTrade(uid, next);
+  };
+
+  const doDelete = async (tradeId: string) => {
+    const uid = auth.currentUser?.uid;
+    if (!uid) {
+      alert("Sessão expirada. Faz login novamente.");
+      return;
+    }
+    try {
+      setBusyDelete(true);
+      await deleteTrade(uid, tradeId);
+      setConfirmId(null);
+    } finally {
+      setBusyDelete(false);
+    }
   };
 
   const badgeSide = (side?: string) => {
@@ -168,9 +186,8 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
               const isExpanded = !!expanded[t.id];
 
               return (
-                <>
+                <React.Fragment key={t.id}>
                   <tr
-                    key={t.id}
                     className={`align-middle ${
                       oversized ? "outline outline-2 outline-danger/50" : ""
                     }`}
@@ -272,6 +289,14 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                           >
                             <Pencil className="w-4 h-4" />
                           </button>
+                          <button
+                            className="btn-ghost text-rose-300 hover:text-rose-200"
+                            onClick={() => setConfirmId(t.id)}
+                            title="Eliminar"
+                            aria-label={`Eliminar trade ${t.symbol}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
@@ -283,6 +308,14 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                             aria-label={`Editar trade ${t.symbol}`}
                           >
                             <Pencil className="w-4 h-4" />
+                          </button>
+                          <button
+                            className="btn-ghost text-rose-300 hover:text-rose-200"
+                            onClick={() => setConfirmId(t.id)}
+                            title="Eliminar"
+                            aria-label={`Eliminar trade ${t.symbol}`}
+                          >
+                            <Trash2 className="w-4 h-4" />
                           </button>
                         </div>
                       )}
@@ -355,20 +388,38 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                                 >
                                   <Pencil className="w-4 h-4" />
                                 </button>
+                                <button
+                                  className="btn-ghost text-rose-300 hover:text-rose-200"
+                                  onClick={() => setConfirmId(t.id)}
+                                  title="Eliminar"
+                                  aria-label={`Eliminar trade ${t.symbol}`}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
                               </div>
                             ) : (
                               <div className="flex items-center justify-between">
                                 <span className="small">
                                   R: {(t.r ?? 0).toFixed(2)}
                                 </span>
-                                <button
-                                  className="btn-ghost"
-                                  onClick={() => doEdit(t)}
-                                  title="Editar"
-                                  aria-label={`Editar trade ${t.symbol}`}
-                                >
-                                  <Pencil className="w-4 h-4" />
-                                </button>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    className="btn-ghost"
+                                    onClick={() => doEdit(t)}
+                                    title="Editar"
+                                    aria-label={`Editar trade ${t.symbol}`}
+                                  >
+                                    <Pencil className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    className="btn-ghost text-rose-300 hover:text-rose-200"
+                                    onClick={() => setConfirmId(t.id)}
+                                    title="Eliminar"
+                                    aria-label={`Eliminar trade ${t.symbol}`}
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
+                                </div>
                               </div>
                             )}
                           </div>
@@ -376,7 +427,7 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                       )}
                     </td>
                   </tr>
-                </>
+                </React.Fragment>
               );
             })}
 
@@ -393,8 +444,42 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
 
       {/* Dica UX para mobile */}
       <div className="mt-2 small text-sub md:hidden">
-        * Toca no símbolo para ver detalhes e ações (fechar/editar) desta trade.
+        * Toca no símbolo para ver detalhes, fechar, editar ou eliminar a trade.
       </div>
+
+      {/* Modal de confirmação de eliminação */}
+      {confirmId && (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/60 p-4">
+          <div className="w-full max-w-sm rounded-2xl bg-neutral-900/95 ring-1 ring-white/10 p-4">
+            <div className="flex items-center justify-between mb-2">
+              <h4 className="font-semibold">Eliminar trade</h4>
+              <button className="btn-ghost p-1" onClick={() => setConfirmId(null)}>
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-sm opacity-80">
+              Tens a certeza que queres eliminar esta trade? Se já estava fechada, o saldo será
+              ajustado e o PnL removido.
+            </p>
+            <div className="mt-4 flex justify-end gap-2">
+              <button
+                className="rounded-lg px-3 py-1.5 bg-white/5 hover:bg-white/10 ring-1 ring-white/10 text-sm"
+                onClick={() => setConfirmId(null)}
+                disabled={busyDelete}
+              >
+                Cancelar
+              </button>
+              <button
+                className="rounded-lg px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white text-sm disabled:opacity-60"
+                onClick={() => doDelete(confirmId)}
+                disabled={busyDelete}
+              >
+                {busyDelete ? "A eliminar…" : "Eliminar"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

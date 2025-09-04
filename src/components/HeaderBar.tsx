@@ -102,7 +102,7 @@ export default function HeaderBar() {
         <div className="flex items-center gap-3 min-w-0">
           <Link href="/dashboard" className="shrink-0 rounded-xl overflow-hidden">
             <Image
-              src="/Traydayicon.png"
+              src="/traydayicon.png"
               width={36}
               height={36}
               alt="Tradeway"
