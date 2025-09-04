@@ -14,8 +14,6 @@ import { auth, db } from "@/lib/firebase.client";
 import {
   CheckCircle2,
   ShieldCheck,
-  BarChart2,
-  Calendar,
   LineChart,
   Download,
   ArrowRight,
@@ -23,7 +21,10 @@ import {
   Lock,
   Eye,
   EyeOff,
+  Calendar,
+  BarChart2,
 } from "lucide-react";
+import FeaturedCards from "@/components/FeaturedCards";
 
 function mapAuthError(e: any): string {
   const code = (e?.code || "").toString();
@@ -61,7 +62,7 @@ export default function LoginPage() {
     () =>
       mode === "login"
         ? "Bem-vindo de volta. Continua a tua evolução com análises em tempo real."
-        : "Cria a tua conta  em segundos. Onboarding simples: saldo inicial e moeda.",
+        : "Cria a tua conta em segundos. Onboarding simples: saldo inicial e moeda.",
     [mode]
   );
 
@@ -77,7 +78,6 @@ export default function LoginPage() {
         } else {
           if (pass !== pass2) throw new Error("As passwords não coincidem.");
           const cred = await createUserWithEmailAndPassword(auth, email.trim(), pass);
-          // documento base do utilizador
           await setDoc(
             doc(db, "users", cred.user.uid),
             {
@@ -117,50 +117,32 @@ export default function LoginPage() {
 
   return (
     <main className="min-h-screen flex items-stretch">
-      {/* Coluna de apresentação / benefício (esquerda) */}
+      {/* Coluna de apresentação */}
       <section className="hidden lg:flex flex-1 flex-col justify-between p-8">
         <header className="flex items-center gap-3">
-          
-          <span className="font-semibold tracking-tight">TradeWay.com</span>
+          <span className="font-semibold tracking-tight">Traday.com</span>
         </header>
 
         <div>
           <h1 className="text-4xl xl:text-5xl font-extrabold leading-[1.1] mb-3">
             O teu cockpit de <span className="text-ok">performance</span> em trading.
           </h1>
-          <p className="text-lg text-sub max-w-2xl">
+          <p className="mt-6 text-lg text-sub max-w-2xl">
             KPIs accionáveis, calendário de sessões, gestão de risco e exportações
             num só lugar. Constrói consistência com métricas reais e controlo total.
           </p>
 
-          {/* Highlights */}
-          <div className="mt-8 grid grid-cols-3 gap-3 max-w-3xl">
-            <Feature
-              icon={<BarChart2 className="h-4 w-4" />}
-              title="KPIs em tempo real"
-              desc="10 métricas chave com gráficos dedicados."
-            />
-            <Feature
-              icon={<Calendar className="h-4 w-4" />}
-              title="Sessões & calendário"
-              desc="Resultados por dia e por trade."
-            />
-            <Feature
-              icon={<Download className="h-4 w-4" />}
-              title="Exportações & payout"
-              desc="CSV, texto e simulação de levantamentos."
-            />
-          </div>
+          {/* 👉 agora a secção usa o teu componente */}
+          <FeaturedCards />
 
-          {/* Trust row */}
-          <div className="mt-6 flex flex-wrap items-center gap-4 text-sm text-sub">
+          <div className="mt-9 flex flex-wrap items-center gap-4 text-sm text-sub">
             <span className="inline-flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4" />
               Firebase Auth & Firestore
             </span>
             <span className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="h-4 w-4" />
-              Sem lock-in • Exporta tudo
+              Sem lock-in 
             </span>
             <span className="inline-flex items-center gap-1.5">
               <CheckCircle2 className="h-4 w-4" />
@@ -170,18 +152,18 @@ export default function LoginPage() {
         </div>
 
         <footer className="text-xs text-sub">
-          © {new Date().getFullYear()} TradeWay Construído com Next.js & Firebase
+          © {new Date().getFullYear()} TradeWay • Next.js & Firebase
         </footer>
       </section>
 
-      {/* Coluna do formulário (direita) */}
+      {/* Coluna do formulário */}
       <section className="flex-1 flex items-center justify-center p-6 lg:p-10">
         <div className="w-full max-w-md">
           <div className="card">
             <div className="mb-3">
-              <h2 className="text-2xl font-bold">{
-                mode === "login" ? "Entrar" : "Criar conta"
-              }</h2>
+              <h2 className="text-2xl font-bold">
+                {mode === "login" ? "Entrar" : "Criar conta"}
+              </h2>
               <p className="small mt-1">{subtitle}</p>
             </div>
 
@@ -189,9 +171,9 @@ export default function LoginPage() {
               <div>
                 <label className="label">Email</label>
                 <div className="flex items-center gap-2">
-                  <div className="icon-btn" aria-hidden>
+                  <IconBubble>
                     <Mail className="h-4 w-4" />
-                  </div>
+                  </IconBubble>
                   <input
                     className="input w-full"
                     type="email"
@@ -207,9 +189,9 @@ export default function LoginPage() {
               <div>
                 <label className="label">Password</label>
                 <div className="flex items-center gap-2">
-                  <div className="icon-btn" aria-hidden>
+                  <IconBubble>
                     <Lock className="h-4 w-4" />
-                  </div>
+                  </IconBubble>
                   <input
                     className="input w-full"
                     type={showPass ? "text" : "password"}
@@ -268,13 +250,8 @@ export default function LoginPage() {
               </button>
             </form>
 
-            {/* Ações secundárias */}
             <div className="mt-3 flex items-center justify-between">
-              <button
-                type="button"
-                onClick={onReset}
-                className="btn-ghost"
-              >
+              <button type="button" onClick={onReset} className="btn-ghost">
                 Esqueceste a password?
               </button>
               <button
@@ -291,7 +268,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {/* Mini “faixa” de benefícios em mobile */}
+          {/* Mini badges em mobile */}
           <div className="mt-6 grid grid-cols-2 gap-3 lg:hidden">
             <MiniBadge icon={<BarChart2 className="h-4 w-4" />} text="KPIs em tempo real" />
             <MiniBadge icon={<Calendar className="h-4 w-4" />} text="Calendário de sessões" />
@@ -304,26 +281,12 @@ export default function LoginPage() {
   );
 }
 
-function Feature({
-  icon,
-  title,
-  desc,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-}) {
+/* ---------- helpers locais ---------- */
+
+function IconBubble({ children }: { children: React.ReactNode }) {
   return (
-    <div className="card">
-      <div className="flex items-start gap-3">
-        <div className="icon-btn" aria-hidden>
-          {icon}
-        </div>
-        <div>
-          <div className="font-semibold leading-tight">{title}</div>
-          <div className="small">{desc}</div>
-        </div>
-      </div>
+    <div className="icon-btn shrink-0 h-8 w-8 rounded-xl flex items-center justify-center">
+      {children}
     </div>
   );
 }
