@@ -191,6 +191,16 @@ export default function HeaderBar() {
                   <Settings className="h-4 w-4 mr-2" />
                   Definições
                 </Link>
+                
+                <Link 
+                href="/upgrade" 
+                className="dropdown-item"
+                role="menuitem"
+                onClick={() => setUserOpen(false)}
+                >
+                  <Settings className="h-4 w-4 mr-2" />
+                  Upgrade plan
+                </Link>
                 <hr className="my-1 opacity-20" />
                 <button
                   className="btn-ghost w-full justify-start text-danger"
