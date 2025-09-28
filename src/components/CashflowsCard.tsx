@@ -95,7 +95,7 @@ export default function CashflowsCard({ cashflows, currency }: Props) {
               aria-pressed={mode === "deposit"}
             >
               <div className="inline-flex items-center gap-1.5">
-                <Plus className="w-4 h-4" /> Depósito
+                <Plus className="w-4 h-4" /> 
               </div>
             </button>
             <button
@@ -107,7 +107,7 @@ export default function CashflowsCard({ cashflows, currency }: Props) {
               aria-pressed={mode === "withdrawal"}
             >
               <div className="inline-flex items-center gap-1.5">
-                <Minus className="w-4 h-4" /> Levantamento
+                <Minus className="w-4 h-4" />
               </div>
             </button>
           </div>

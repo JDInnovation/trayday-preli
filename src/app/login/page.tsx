@@ -120,7 +120,7 @@ export default function LoginPage() {
       {/* Coluna de apresentação */}
       <section className="hidden lg:flex flex-1 flex-col justify-between p-8">
         <header className="flex items-center gap-3">
-          <span className="font-semibold tracking-tight">Traday.com</span>
+          <span className="font-semibold tracking-tight">Traday.io</span>
         </header>
 
         <div>

@@ -14,10 +14,10 @@
   --border: rgba(255, 255, 255, 0.12);
   --text: #e6eaf2;
   --text-sub: #9aa4b2;
-  --ok: #795AEA;
+  --ok: #4db164;
   --danger: #ff6b6b;
   --warn: #ffd166;
-  --brand: #7c5cff;
+  --brand: #ffffff;
 
   --radius: 16px;
   --shadow-1: 0 8px 24px rgba(0, 0, 0, 0.35);
@@ -37,7 +37,7 @@ html[data-theme="light"] {
   --ok: #0ea5a5;
   --danger: #e11d48;
   --warn: #d97706;
-  --brand: #6d28d9;
+  --brand: #4db164;
 }
 
 /* ===========================

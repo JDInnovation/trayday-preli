@@ -83,8 +83,7 @@ export default function HeaderBar() {
     () =>
       new Date().toLocaleDateString("pt-PT", {
         weekday: "long",
-        year: "numeric",
-        month: "long",
+        month: "numeric",
         day: "numeric",
       }),
     []
@@ -92,9 +91,9 @@ export default function HeaderBar() {
 
   const links = [
     { href: "/dashboard", label: "Dashboard", icon: <Home className="h-4 w-4" /> },
-    { href: "/noticias", label: "Notícias", icon: <Newspaper className="h-4 w-4" /> },
+    { href: "/noticias", label: "News", icon: <Newspaper className="h-4 w-4" /> },
     { href: "/profile", label: "Perfil", icon: <User className="h-4 w-4" /> },
-    { href: "/settings", label: "Definições", icon: <Settings className="h-4 w-4" /> },
+    { href: "/settings", label: "Settings", icon: <Settings className="h-4 w-4" /> },
   ];
 
   return (
@@ -115,8 +114,8 @@ export default function HeaderBar() {
           </Link>
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-semibold truncate">Bem-vindo, {name} </span>
-              <span className="hidden md:inline small text-sub">• {today}</span>
+              <span className="font-semibold truncate">Trayday</span>
+              <span className="hidden md:inline small text-sub"> {today}</span>
             </div>
             <div className="md:hidden small text-sub">{today}</div>
           </div>

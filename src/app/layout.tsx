@@ -3,8 +3,8 @@ import "../styles/globals.css";
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Trading Dashboard — Pro",
-  description: "Painel de performance de trading — Next.js + Firebase",
+  title: "Trayday.io",
+  description: "Painel de performance de trading.",
 };
 
 export default function RootLayout({

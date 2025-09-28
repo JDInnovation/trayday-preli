@@ -7,7 +7,7 @@ export default function WinLossDonut({ wins, losses }: { wins: number; losses: n
     { name: "Wins", value: wins },
     { name: "Losses", value: losses }
   ];
-  const colors = ["#7c5cff", "#404040FF"];
+  const colors = ["#4db164", "#ff6b6b"];
   return (
     <div className="card h-72">
       <h4 className="mb-2 font-semibold">Win / Loss</h4>
