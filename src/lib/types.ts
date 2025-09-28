@@ -6,21 +6,29 @@ export type TradeStatus = "open" | "closed";
 export interface Trade {
   id?: string;
   symbol?: string;
-  ticker?: string;       // ⬅️ alias para compatibilidade com código que usa 'ticker'
+  ticker?: string;       // alias para compatibilidade com código que usa 'ticker'
   side?: Side;
   status?: TradeStatus;
   openAt?: number | null;
   closedAt?: number | null;
+
+  // métricas de resultado
   pnl?: number | null;
   fees?: number | null;
+  r?: number | null;
+
+  // risco e tamanho
   riskPct?: number | null;
   riskAmount?: number | null;
   size?: number | null;      // tamanho na moeda da conta
-  sizeUsd?: number | null;   // caso uses USD à parte
-  r?: number | null;
-  tType?: string | null;     // tipo de trade (scalp/swing/etc) se usado
+  sizeUsd?: number | null;   // tamanho em USD, se aplicável
+
+  // contexto/auxiliares
+  tType?: string | null;     // tipo de trade (scalp/swing/etc), usado por typeFactor
+  balanceBefore?: number | null; // ⬅️ ADICIONADO: saldo de referência antes da trade
   recommended?: boolean | null;
   oversized?: boolean | null;
+
   note?: string | null;
 }
 
