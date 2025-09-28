@@ -1,11 +1,11 @@
 // src/lib/firebase.client.ts
-"use client";
-
-import { initializeApp, getApps, getApp } from "firebase/app";
+import { getApps, getApp, initializeApp } from "firebase/app";
 import { getAuth } from "firebase/auth";
-import { initializeFirestore, enableNetwork } from "firebase/firestore";
+import { getFirestore } from "firebase/firestore";
+import { getStorage } from "firebase/storage";
 
-const cfg = {
+// Lê variáveis expostas ao cliente (Next: prefixo NEXT_PUBLIC_)
+const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY!,
   authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN!,
   projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID!,
@@ -14,15 +14,20 @@ const cfg = {
   appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID!,
 };
 
-const app = getApps().length ? getApp() : initializeApp(cfg);
+const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
 
-// Firestore com auto-deteção de long-polling (evita redes que bloqueiam WebChannel)
-export const db = initializeFirestore(app, {
-  ignoreUndefinedProperties: true,
-  experimentalAutoDetectLongPolling: true,
-});
-
+// Estes podem existir em server e client sem problemas
 export const auth = getAuth(app);
+export const db = getFirestore(app);
 
-// Garante que a rede está ligada no cliente
-enableNetwork(db).catch(() => {});
+// Storage só existe no browser; em SSR devolvemos null (tipado como any)
+export const storage: ReturnType<typeof getStorage> = ((): any => {
+  try {
+    if (typeof window === "undefined") return null;
+    return getStorage(app);
+  } catch {
+    return null;
+  }
+})();
+
+export { app };

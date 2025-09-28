@@ -37,7 +37,13 @@ export interface UserDoc {
   currentBalance: number | null;
   monthlyExpenses?: Record<string, number>; // "YYYY-MM" -> number
   createdAt: number;
+  params?: {
+    dayLossPct?: number; // perda diária (%)
+    dayGoalPct?: number; // meta diária (%)
+  };
+
 }
+
 
 export interface MonthAggDay {
   key: string; // YYYY-MM-DD
