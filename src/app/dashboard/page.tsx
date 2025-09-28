@@ -31,7 +31,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase.client";
 import { listenAllTrades, listenCashflows, listenUser, saveOnboarding } from "@/lib/firestore";
 import { Cashflow, Trade, UserDoc } from "@/lib/types";
-import { endOfMonth, monthLabel, startOfMonth, ymd, fmtMoney, daysInMonth } from "@/lib/utils";
+import { endOfMonth, monthLabel, startOfMonth, ymd, daysInMonth } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
 import { Activity, BarChart2, Calendar, Download, Gauge, LineChart, PieChart } from "lucide-react";
 
@@ -136,7 +136,7 @@ function DashboardContent({
     trades.forEach((t) => {
       const whenTs =
         t.status === "closed" ? (t.closedAt ?? t.openAt) : t.openAt;
-      if (typeof whenTs !== "number") return; // ignora trades sem timestamp válido
+      if (typeof whenTs !== "number") return;
       const dkey = ymd(new Date(whenTs));
       (map[dkey] ||= []).push(t);
     });
@@ -193,10 +193,20 @@ function DashboardContent({
     ? Math.max(0, Math.ceil((e.getTime() - today.getTime()) / 86400000))
     : 0;
 
-  const expenses =
-    user.monthlyExpenses?.[
-      `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`
-    ] || 0;
+  // ✅ FIX: calcular despesas do mês a partir dos cashflows (sem precisar de user.monthlyExpenses)
+  const expenses = useMemo(() => {
+    const monthCash = (cashflows as any[]).filter((c) => {
+      const ts = (c as any).ts ?? (c as any).date ?? 0;
+      if (typeof ts !== "number") return false;
+      return ts >= s.getTime() && ts <= e.getTime();
+    });
+    return monthCash.reduce((acc, c: any) => {
+      const amt = Number(c.amount ?? 0);
+      const isExpenseType = (c.type ?? c.kind) === "expense";
+      const asExpense = isExpenseType ? Math.abs(amt) : amt < 0 ? Math.abs(amt) : 0;
+      return acc + asExpense;
+    }, 0);
+  }, [cashflows, s, e]);
 
   // ---------- TIMEFRAME + KPIs ----------
   const [tf, setTf] = useState<Timeframe>(() => {
@@ -252,7 +262,7 @@ function DashboardContent({
     <div className="flex flex-col gap-6">
       <HeaderBar />
 
-      {/* Nav secundária + Timeframe (AGORA NÃO-STICKY) */}
+      {/* Nav secundária + Timeframe */}
       <div className="card flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <AnchorNav
           items={[
@@ -485,7 +495,7 @@ function DashboardContent({
           year={viewYear}
           month={viewMonth}
           currency={user.currency}
-          user={{ startingBalance: user.startingBalance || 0, currentBalance: user.currentBalance || 0 }}
+          user={{ startingBalance: user.startingBalance || 0, currentBalance: user.currentBalance || 0, email: user.email }}
           monthLabel={monthLbl}
           monthPnL={monthPnL}
           expenses={expenses}
