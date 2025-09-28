@@ -15,6 +15,8 @@ import {
   X,
   Timer as TimerIcon,
   ChevronDown,
+  Crown,
+  Newspaper,
 } from "lucide-react";
 
 /** Tenta obter um nome “bonito” para o user */
@@ -90,6 +92,7 @@ export default function HeaderBar() {
 
   const links = [
     { href: "/dashboard", label: "Dashboard", icon: <Home className="h-4 w-4" /> },
+    { href: "/noticias", label: "Notícias", icon: <Newspaper className="h-4 w-4" /> },
     { href: "/profile", label: "Perfil", icon: <User className="h-4 w-4" /> },
     { href: "/settings", label: "Definições", icon: <Settings className="h-4 w-4" /> },
   ];
@@ -162,48 +165,58 @@ export default function HeaderBar() {
             {userOpen && (
               <div
                 role="menu"
-                className="absolute right-0 mt-2 w-56 card p-1"
+                className="absolute right-0 mt-2 w-60 rounded-xl bg-neutral-900 shadow-xl ring-1 ring-white/10 p-2 z-50"
               >
                 <Link
                   href="/dashboard"
-                  className="btn-ghost w-full justify-start"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 text-sm"
                   role="menuitem"
                   onClick={() => setUserOpen(false)}
                 >
-                  <Home className="h-4 w-4 mr-2" />
-                  Dashboard
+                  <Home className="h-4 w-4" />
+                  <span>Dashboard</span>
+                </Link>
+                <Link
+                  href="/noticias"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 text-sm"
+                  role="menuitem"
+                  onClick={() => setUserOpen(false)}
+                >
+                  <Newspaper className="h-4 w-4" />
+                  <span>Notícias</span>
                 </Link>
                 <Link
                   href="/profile"
-                  className="btn-ghost w-full justify-start"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 text-sm"
                   role="menuitem"
                   onClick={() => setUserOpen(false)}
                 >
-                  <User className="h-4 w-4 mr-2" />
-                  Perfil
+                  <User className="h-4 w-4" />
+                  <span>Perfil</span>
                 </Link>
                 <Link
                   href="/settings"
-                  className="btn-ghost w-full justify-start"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 text-sm"
                   role="menuitem"
                   onClick={() => setUserOpen(false)}
                 >
-                  <Settings className="h-4 w-4 mr-2" />
-                  Definições
+                  <Settings className="h-4 w-4" />
+                  <span>Definições</span>
                 </Link>
-                
-                <Link 
-                href="/upgrade" 
-                className="dropdown-item"
-                role="menuitem"
-                onClick={() => setUserOpen(false)}
+                <Link
+                  href="/upgrade"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 text-sm"
+                  role="menuitem"
+                  onClick={() => setUserOpen(false)}
                 >
-                  <Settings className="h-4 w-4 mr-2" />
-                  Upgrade plan
+                  <Crown className="h-4 w-4" />
+                  <span>Upgrade plan</span>
                 </Link>
-                <hr className="my-1 opacity-20" />
+
+                <div className="my-2 h-px bg-white/10" />
+
                 <button
-                  className="btn-ghost w-full justify-start text-danger"
+                  className="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-white/10 text-sm text-danger w-full justify-start"
                   role="menuitem"
                   onClick={async () => {
                     setUserOpen(false);
@@ -211,8 +224,8 @@ export default function HeaderBar() {
                     router.push("/login");
                   }}
                 >
-                  <LogOut className="h-4 w-4 mr-2" />
-                  Terminar sessão
+                  <LogOut className="h-4 w-4" />
+                  <span>Terminar sessão</span>
                 </button>
               </div>
             )}

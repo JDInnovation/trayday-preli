@@ -1,10 +1,19 @@
+// app/settings/page.tsx
 "use client";
 
 import React from "react";
-import HeaderBar from "@/components/HeaderBar"; // ⬅ header
+import HeaderBar from "@/components/HeaderBar";
 import { auth, db } from "@/lib/firebase.client";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
-import { Save, SlidersHorizontal, Shield, Eye, EyeOff } from "lucide-react";
+import {
+  Save,
+  SlidersHorizontal,
+  Shield,
+  Eye,
+  EyeOff,
+  Target,
+  TrendingDown,
+} from "lucide-react";
 
 type Leverage = { short: number; normal: number; long: number };
 
@@ -18,7 +27,15 @@ export default function SettingsPage() {
 
   const [defaultRiskPct, setDefaultRiskPct] = React.useState(1.5);
   const [maxLossPct, setMaxLossPct] = React.useState(2);
-  const [lev, setLev] = React.useState<Leverage>({ short: 1.8, normal: 3, long: 6 });
+  const [lev, setLev] = React.useState<Leverage>({
+    short: 1.8,
+    normal: 3,
+    long: 6,
+  });
+
+  // NOVO: metas/limites diários
+  const [dayLossPct, setDayLossPct] = React.useState(9);
+  const [dayGoalPct, setDayGoalPct] = React.useState(15);
 
   const uid = auth.currentUser?.uid || null;
 
@@ -52,6 +69,14 @@ export default function SettingsPage() {
             long: Number(data.params.leverage.long ?? 6),
           });
         }
+        // NOVO: metas/limites diários
+        if (data.params?.dayLossPct !== undefined) {
+          setDayLossPct(Number(data.params.dayLossPct));
+        }
+        if (data.params?.dayGoalPct !== undefined) {
+          setDayGoalPct(Number(data.params.dayGoalPct));
+        }
+
         if (!cancel) setLoading(false);
       } catch {
         if (!cancel) {
@@ -61,7 +86,9 @@ export default function SettingsPage() {
       }
     }
     load();
-    return () => { cancel = true; };
+    return () => {
+      cancel = true;
+    };
   }, [uid]);
 
   async function save(e: React.FormEvent<HTMLFormElement>) {
@@ -79,6 +106,9 @@ export default function SettingsPage() {
         "params.leverage.short": Number(lev.short),
         "params.leverage.normal": Number(lev.normal),
         "params.leverage.long": Number(lev.long),
+        // NOVO: metas/limites diários
+        "params.dayLossPct": Number(dayLossPct),
+        "params.dayGoalPct": Number(dayGoalPct),
       });
     } catch {
       setError("Não foi possível guardar. Tenta novamente.");
@@ -94,9 +124,13 @@ export default function SettingsPage() {
         <header className="flex items-center justify-between">
           <div>
             <h1 className="text-xl md:text-2xl font-bold">Definições</h1>
-            <p className="opacity-70 text-sm">Personaliza a experiência e os parâmetros de risco.</p>
+            <p className="opacity-70 text-sm">
+              Personaliza a experiência e os parâmetros de risco.
+            </p>
           </div>
-          <div className="hidden md:block opacity-70 text-sm">Conta: {auth.currentUser?.email ?? "—"}</div>
+          <div className="hidden md:block opacity-70 text-sm">
+            Conta: {auth.currentUser?.email ?? "—"}
+          </div>
         </header>
 
         {loading && <div className="opacity-80">A carregar definições…</div>}
@@ -141,8 +175,14 @@ export default function SettingsPage() {
                     aria-pressed={hideBalance}
                     title={hideBalance ? "Mostrar saldo" : "Ocultar saldo"}
                   >
-                    <span>{hideBalance ? "Oculto por defeito" : "Visível por defeito"}</span>
-                    {hideBalance ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    <span>
+                      {hideBalance ? "Oculto por defeito" : "Visível por defeito"}
+                    </span>
+                    {hideBalance ? (
+                      <EyeOff className="w-4 h-4" />
+                    ) : (
+                      <Eye className="w-4 h-4" />
+                    )}
                   </button>
                 </div>
               </div>
@@ -158,7 +198,9 @@ export default function SettingsPage() {
               <div className="grid md:grid-cols-2 gap-4">
                 {/* Risco por defeito */}
                 <div className="space-y-2">
-                  <label className="text-xs opacity-70">Risco por trade (por defeito)</label>
+                  <label className="text-xs opacity-70">
+                    Risco por trade (por defeito)
+                  </label>
                   <div className="flex gap-2">
                     <input
                       type="number"
@@ -168,12 +210,16 @@ export default function SettingsPage() {
                       value={defaultRiskPct}
                       onChange={(e) => setDefaultRiskPct(Number(e.target.value))}
                     />
-                    <span className="inline-flex items-center px-3 rounded-lg bg-white/5 ring-1 ring-white/10 text-sm">%</span>
+                    <span className="inline-flex items-center px-3 rounded-lg bg-white/5 ring-1 ring-white/10 text-sm">
+                      %
+                    </span>
                   </div>
-                  <p className="text-xs opacity-60">Usado como sugestão no Order Form (ex.: 1.5%).</p>
+                  <p className="text-xs opacity-60">
+                    Usado como sugestão no Order Form (ex.: 1.5%).
+                  </p>
                 </div>
 
-                {/* Perda máxima */}
+                {/* Perda máxima por trade */}
                 <div className="space-y-2">
                   <label className="text-xs opacity-70">Perda máxima por trade</label>
                   <div className="flex gap-2">
@@ -185,9 +231,13 @@ export default function SettingsPage() {
                       value={maxLossPct}
                       onChange={(e) => setMaxLossPct(Number(e.target.value))}
                     />
-                    <span className="inline-flex items-center px-3 rounded-lg bg-white/5 ring-1 ring-white/10 text-sm">%</span>
+                    <span className="inline-flex items-center px-3 rounded-lg bg-white/5 ring-1 ring-white/10 text-sm">
+                      %
+                    </span>
                   </div>
-                  <p className="text-xs opacity-60">Informativo para o teu Stop Loss (ex.: 2%).</p>
+                  <p className="text-xs opacity-60">
+                    Informativo para o teu Stop Loss (ex.: 2%).
+                  </p>
                 </div>
               </div>
 
@@ -201,7 +251,9 @@ export default function SettingsPage() {
                     min={0}
                     className="w-full rounded-lg bg-white/5 ring-1 ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/20"
                     value={lev.short}
-                    onChange={(e) => setLev({ ...lev, short: Number(e.target.value) })}
+                    onChange={(e) =>
+                      setLev({ ...lev, short: Number(e.target.value) })
+                    }
                   />
                   <p className="text-xs opacity-60">Por defeito: 1.8</p>
                 </div>
@@ -213,7 +265,9 @@ export default function SettingsPage() {
                     min={0}
                     className="w-full rounded-lg bg-white/5 ring-1 ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/20"
                     value={lev.normal}
-                    onChange={(e) => setLev({ ...lev, normal: Number(e.target.value) })}
+                    onChange={(e) =>
+                      setLev({ ...lev, normal: Number(e.target.value) })
+                    }
                   />
                   <p className="text-xs opacity-60">Por defeito: 3</p>
                 </div>
@@ -225,9 +279,62 @@ export default function SettingsPage() {
                     min={0}
                     className="w-full rounded-lg bg-white/5 ring-1 ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/20"
                     value={lev.long}
-                    onChange={(e) => setLev({ ...lev, long: Number(e.target.value) })}
+                    onChange={(e) =>
+                      setLev({ ...lev, long: Number(e.target.value) })
+                    }
                   />
                   <p className="text-xs opacity-60">Por defeito: 6</p>
+                </div>
+              </div>
+
+              {/* NOVO: Metas & Limites Diários */}
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* Perda diária (% do saldo) */}
+                <div className="space-y-2">
+                  <label className="text-xs opacity-70 flex items-center gap-2">
+                    <TrendingDown className="w-4 h-4 opacity-70" />
+                    Limite de perda diária (%)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min={0}
+                      className="flex-1 rounded-lg bg-white/5 ring-1 ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/20"
+                      value={dayLossPct}
+                      onChange={(e) => setDayLossPct(Number(e.target.value))}
+                    />
+                    <span className="inline-flex items-center px-3 rounded-lg bg-white/5 ring-1 ring-white/10 text-sm">
+                      %
+                    </span>
+                  </div>
+                  <p className="text-xs opacity-60">
+                    Percentagem do saldo usada no widget “Risco & Meta” (ex.: 9%).
+                  </p>
+                </div>
+
+                {/* Meta diária (% do saldo) */}
+                <div className="space-y-2">
+                  <label className="text-xs opacity-70 flex items-center gap-2">
+                    <Target className="w-4 h-4 opacity-70" />
+                    Meta diária (%)
+                  </label>
+                  <div className="flex gap-2">
+                    <input
+                      type="number"
+                      step="0.1"
+                      min={0}
+                      className="flex-1 rounded-lg bg-white/5 ring-1 ring-white/10 px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-white/20"
+                      value={dayGoalPct}
+                      onChange={(e) => setDayGoalPct(Number(e.target.value))}
+                    />
+                    <span className="inline-flex items-center px-3 rounded-lg bg-white/5 ring-1 ring-white/10 text-sm">
+                      %
+                    </span>
+                  </div>
+                  <p className="text-xs opacity-60">
+                    Percentagem do saldo usada como “Meta diária” (ex.: 15%).
+                  </p>
                 </div>
               </div>
             </section>
@@ -237,7 +344,7 @@ export default function SettingsPage() {
               <button
                 type="submit"
                 disabled={saving}
-                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 bg-white/10 hover:bg-white/15 ring-1 ring-white/10 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                className="inline-flex items-center gap-2 rounded-lg px-4 py-2 bg-white/10 hover:bg:white/15 ring-1 ring-white/10 text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
                 title="Guardar definições"
               >
                 <Save className="w-4 h-4" />

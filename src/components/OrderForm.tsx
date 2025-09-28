@@ -16,42 +16,65 @@ import { openTrade, editTrade, tradesColRef } from "@/lib/firestore";
 import type { Trade } from "@/lib/types";
 import { doc, setDoc } from "firebase/firestore";
 
+// === Tipos ===
 type QuickMode = "curta" | "normal" | "longa";
+type Leverage = { curta: number; normal: number; longa: number };
+type RiskParams = {
+  defaultRiskPct: number;
+  maxLossPct: number;
+  leverage: Leverage;
+};
 
 export default function OrderForm({
   balance,
   currency,
+  // NOVO: parâmetros vindos das Definições (opcional)
+  riskParams,
 }: {
   balance: number;
   currency: string;
+  riskParams?: RiskParams;
 }) {
   // ---- UI State
   const [symbol, setSymbol] = useState<string>("");
   const [side, setSide] = useState<"long" | "short">("long");
 
-  // risco (informativo) — 1.5% por defeito
-  const [riskPct, setRiskPct] = useState<number>(1.5);
+  // risco (informativo) — inicializa a partir das definições se existirem
+  const [riskPct, setRiskPct] = useState<number>(riskParams?.defaultRiskPct ?? 1.5);
   const riskMoney = useMemo<number>(
     () => Math.max(0, (balance || 0) * (riskPct / 100)),
     [balance, riskPct]
   );
 
-  // perda máxima aconselhada (informativo) — 2% por defeito
-  const [maxLossPct, setMaxLossPct] = useState<number>(2);
+  // perda máxima aconselhada (informativo)
+  const [maxLossPct, setMaxLossPct] = useState<number>(riskParams?.maxLossPct ?? 2);
   const maxLossMoney = useMemo<number>(
     () => Math.max(0, (balance || 0) * (maxLossPct / 100)),
     [balance, maxLossPct]
   );
 
+  // sincroniza se as definições forem atualizadas em runtime
+  useEffect(() => {
+    if (riskParams?.defaultRiskPct != null) setRiskPct(riskParams.defaultRiskPct);
+    if (riskParams?.maxLossPct != null) setMaxLossPct(riskParams.maxLossPct);
+  }, [riskParams?.defaultRiskPct, riskParams?.maxLossPct]);
+
   // saldo oculto
   const [showBalance, setShowBalance] = useState<boolean>(false);
 
-  // quick buttons — multiplicadores por saldo
+  // alavancagens / quick buttons — usa as das definições se existirem
   const [mode, setMode] = useState<QuickMode>("normal");
-  const SIZE_MULT: Record<QuickMode, number> = { curta: 1.8, normal: 3, longa: 6 };
+  const SIZE_MULT = useMemo<Leverage>(
+    () => ({
+      curta: riskParams?.leverage?.curta ?? 1.8,
+      normal: riskParams?.leverage?.normal ?? 3,
+      longa: riskParams?.leverage?.longa ?? 6,
+    }),
+    [riskParams?.leverage?.curta, riskParams?.leverage?.normal, riskParams?.leverage?.longa]
+  );
   const recommendedSize = useMemo<number>(
     () => Math.max(0, (balance || 0) * SIZE_MULT[mode]),
-    [balance, mode]
+    [balance, mode, SIZE_MULT]
   );
 
   // tamanho usado (na moeda da conta)
@@ -187,8 +210,8 @@ export default function OrderForm({
   const resetAfterSave = (keepLive: boolean) => {
     setSymbol("");
     setSide("long");
-    setRiskPct(1.5);
-    setMaxLossPct(2);
+    setRiskPct(riskParams?.defaultRiskPct ?? 1.5);
+    setMaxLossPct(riskParams?.maxLossPct ?? 2);
     setMode("normal");
     setSizeUsed("");
     setFees("");
@@ -336,7 +359,6 @@ export default function OrderForm({
               setSizeUsed(e.target.value === "" ? "" : Number(e.target.value))
             }
           />
-
         </div>
       </section>
 

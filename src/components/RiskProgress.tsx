@@ -1,3 +1,4 @@
+// src/components/RiskProgress.tsx
 "use client";
 
 import { useMemo } from "react";
@@ -8,10 +9,15 @@ export default function RiskProgress({
   trades,
   balance,
   currency,
+  // percentagens configuráveis (defaults caso não venham das definições)
+  dayLossPct = 9,
+  dayGoalPct = 15,
 }: {
   trades: Trade[];
   balance: number;
   currency: string;
+  dayLossPct?: number;
+  dayGoalPct?: number;
 }) {
   const todayKey = ymd(new Date());
 
@@ -26,8 +32,8 @@ export default function RiskProgress({
       .reduce((a, t) => a + (t.pnl || 0), 0);
   }, [trades, todayKey]);
 
-  const maxDayLoss = Math.max(0, 0.09 * (balance || 0));
-  const dayGoal = Math.max(0, 0.15 * (balance || 0));
+  const maxDayLoss = Math.max(0, (Number(dayLossPct) / 100) * (balance || 0));
+  const dayGoal = Math.max(0, (Number(dayGoalPct) / 100) * (balance || 0));
 
   const usedLoss = Math.min(Math.max(-pnlToday, 0), maxDayLoss);
   const lossPct = maxDayLoss > 0 ? (usedLoss / maxDayLoss) * 100 : 0;
@@ -42,9 +48,8 @@ export default function RiskProgress({
       {/* Perda diária */}
       <div className="mb-2">
         <div className="flex items-baseline justify-between">
-          <span className="small text-sub">Perda diária (limite 9%)</span>
-          <span className="small">
-            {fmtMoney(usedLoss, currency)} / {fmtMoney(maxDayLoss, currency)}
+          <span className="small text-sub">
+            Perda diária (limite {Number(dayLossPct).toFixed(1)}%)
           </span>
         </div>
         <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden mt-1">
@@ -53,14 +58,16 @@ export default function RiskProgress({
             style={{ width: `${Math.min(100, lossPct)}%` }}
           />
         </div>
+        <div className="small mt-1">
+          {fmtMoney(usedLoss, currency)} / {fmtMoney(maxDayLoss, currency)}
+        </div>
       </div>
 
       {/* Meta diária */}
       <div>
         <div className="flex items-baseline justify-between">
-          <span className="small text-sub">Meta diária (15%)</span>
-          <span className="small">
-            {fmtMoney(goalHit, currency)} / {fmtMoney(dayGoal, currency)}
+          <span className="small text-sub">
+            Meta diária ({Number(dayGoalPct).toFixed(1)}%)
           </span>
         </div>
         <div className="w-full h-2 rounded-full bg-slate-800 overflow-hidden mt-1">
@@ -69,10 +76,14 @@ export default function RiskProgress({
             style={{ width: `${Math.min(100, goalPct)}%` }}
           />
         </div>
+        <div className="small mt-1">
+          {fmtMoney(goalHit, currency)} / {fmtMoney(dayGoal, currency)}
+        </div>
       </div>
 
       <div className="small text-sub mt-2">
-        Baseado no saldo atual. Atualiza em tempo real com as trades fechadas hoje.
+        Baseado no saldo atual. Atualiza em tempo real com as trades fechadas
+        hoje.
       </div>
     </div>
   );

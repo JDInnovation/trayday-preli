@@ -275,7 +275,14 @@ function DashboardContent({
         />
         <div className="grid md:grid-cols-3 gap-3 items-stretch">
           <TodayPulse trades={trades} currency={user.currency} />
-          <RiskProgress trades={trades} balance={user.currentBalance || 0} currency={user.currency} />
+          <RiskProgress
+  trades={trades}
+  balance={user.currentBalance || 0}
+  currency={user.currency}
+  dayLossPct={user.params?.dayLossPct ?? 9}
+  dayGoalPct={user.params?.dayGoalPct ?? 15}
+/>
+
           <div className="card h-full flex items-center justify-center">
             <BalanceChip balance={user.currentBalance || 0} currency={user.currency} />
           </div>
@@ -354,7 +361,20 @@ function DashboardContent({
           icon={<PieChart className="h-5 w-5" />}
         />
         <div className="grid md:grid-cols-2 gap-3">
-          <OrderForm balance={user.currentBalance || 0} currency={user.currency} />
+          <OrderForm
+  balance={user.currentBalance || 0}
+  currency={user.currency}
+  riskParams={{
+    defaultRiskPct: user.params?.defaultRiskPct ?? 1.5,
+    maxLossPct: user.params?.maxLossPct ?? 2,
+    leverage: {
+      curta: user.params?.leverage?.short ?? 1.8,
+      normal: user.params?.leverage?.normal ?? 3,
+      longa: user.params?.leverage?.long ?? 6,
+    },
+  }}
+/>
+
           <CashflowsCard cashflows={cashflows} currency={user.currency} />
         </div>
 
