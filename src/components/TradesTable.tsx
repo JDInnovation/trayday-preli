@@ -10,6 +10,11 @@ import { deleteTrade } from "@/lib/trades";
 
 const PAGE_SIZE = 10;
 
+// 🔑 Gera uma chave estável mesmo quando t.id é undefined
+function tradeKey(t: Trade, idx: number) {
+  return String(t.id ?? t.openAt ?? t.closedAt ?? idx);
+}
+
 export default function TradesTable({ trades }: { trades: Trade[] }) {
   const [page, setPage] = useState(0);
   const [pnlInputs, setPnlInputs] = useState<Record<string, string>>({});
@@ -24,23 +29,27 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
     [trades, page]
   );
 
-  const toggleExpand = (id: string) =>
-    setExpanded((m) => ({ ...m, [id]: !m[id] }));
+  const toggleExpand = (key: string) =>
+    setExpanded((m) => ({ ...m, [key]: !m[key] }));
 
-  const doClose = async (t: Trade) => {
+  const doClose = async (t: Trade, key: string) => {
     const uid = auth.currentUser?.uid;
     if (!uid) {
       alert("Sessão expirada. Faz login novamente.");
       return;
     }
-    const raw = pnlInputs[t.id] ?? "";
+    if (!t.id) {
+      alert("Não é possível fechar esta trade (sem ID).");
+      return;
+    }
+    const raw = pnlInputs[key] ?? "";
     const pnl = parseFloat(raw);
     if (!isFinite(pnl)) {
       alert("PnL inválido");
       return;
     }
     await closeTrade(uid, t.id, pnl);
-    setPnlInputs((m) => ({ ...m, [t.id]: "" }));
+    setPnlInputs((m) => ({ ...m, [key]: "" }));
   };
 
   const doEdit = async (t: Trade) => {
@@ -49,16 +58,12 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
       alert("Sessão expirada. Faz login novamente.");
       return;
     }
-    const symbol = prompt("Símbolo:", t.symbol) || t.symbol;
-    const side = (prompt("Lado (LONG/SHORT):", t.side) || t.side) as any;
-    const riskPct = parseFloat(
-      prompt("Risco %:", String(t.riskPct)) || String(t.riskPct)
-    );
-    const fees = parseFloat(prompt("Taxa (fees):", String(t.fees)) || String(t.fees));
-    const sizeUsd = parseFloat(
-      prompt("Tamanho USD:", String(t.sizeUsd)) || String(t.sizeUsd)
-    );
-    const status = (prompt("Status (open/closed):", t.status) || t.status) as any;
+    const symbol = prompt("Símbolo:", t.symbol || "") || t.symbol || "";
+    const side = (prompt("Lado (LONG/SHORT):", t.side || "") || t.side || "") as any;
+    const riskPct = parseFloat(prompt("Risco %:", String(t.riskPct ?? "")) || String(t.riskPct ?? ""));
+    const fees = parseFloat(prompt("Taxa (fees):", String(t.fees ?? "")) || String(t.fees ?? ""));
+    const sizeUsd = parseFloat(prompt("Tamanho USD:", String(t.sizeUsd ?? "")) || String(t.sizeUsd ?? ""));
+    const status = (prompt("Status (open/closed):", t.status || "open") || t.status || "open") as any;
     const note = prompt("Notas:", t.note || "") || "";
 
     const rec = (t.balanceBefore || 0) * typeFactor(t.tType);
@@ -72,13 +77,11 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
       status,
       note,
       recommended: rec,
-      oversized: sizeUsd > rec,
+      oversized: (sizeUsd || 0) > rec,
     };
 
     if (status === "closed") {
-      const pnl = parseFloat(
-        prompt("PnL (USD):", String(t.pnl ?? 0)) || String(t.pnl ?? 0)
-      );
+      const pnl = parseFloat(prompt("PnL (USD):", String(t.pnl ?? 0)) || String(t.pnl ?? 0));
       next.pnl = pnl;
       next.closedAt = t.closedAt || Date.now();
     } else {
@@ -179,22 +182,21 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
           </thead>
 
           <tbody>
-            {pageTrades.map((t) => {
+            {pageTrades.map((t, i) => {
+              const key = tradeKey(t, i);
               const rec = (t.balanceBefore || 0) * typeFactor(t.tType);
               const oversized = (t.sizeUsd || 0) > rec;
               const isOpen = t.status === "open";
-              const isExpanded = !!expanded[t.id];
+              const isExpanded = !!expanded[key];
 
               return (
-                <React.Fragment key={t.id}>
+                <React.Fragment key={t.id ?? key}>
                   <tr
-                    className={`align-middle ${
-                      oversized ? "outline outline-2 outline-danger/50" : ""
-                    }`}
+                    className={`align-middle ${oversized ? "outline outline-2 outline-danger/50" : ""}`}
                   >
                     {/* Datas (hidden em mobile) */}
                     <td className="small hidden md:table-cell">
-                      {new Date(t.openAt).toLocaleString("pt-PT")}
+                      {t.openAt ? new Date(t.openAt).toLocaleString("pt-PT") : "—"}
                     </td>
                     <td className="small hidden md:table-cell">
                       {t.closedAt ? new Date(t.closedAt).toLocaleString("pt-PT") : "—"}
@@ -205,9 +207,9 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                       <div className="flex items-center gap-2">
                         <button
                           className="md:hidden btn-ghost p-1 rounded-lg"
-                          onClick={() => toggleExpand(t.id)}
+                          onClick={() => toggleExpand(key)}
                           aria-expanded={isExpanded}
-                          aria-controls={`mobile-row-${t.id}`}
+                          aria-controls={`mobile-row-${key}`}
                           title={isExpanded ? "Esconder detalhes" : "Mostrar detalhes"}
                         >
                           {isExpanded ? (
@@ -269,16 +271,16 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                             className="input w-28"
                             placeholder="PnL (USD)"
                             inputMode="decimal"
-                            value={pnlInputs[t.id] ?? ""}
+                            value={pnlInputs[key] ?? ""}
                             onChange={(e) =>
-                              setPnlInputs((m) => ({ ...m, [t.id]: e.target.value }))
+                              setPnlInputs((m) => ({ ...m, [key]: e.target.value }))
                             }
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") doClose(t);
+                              if (e.key === "Enter") doClose(t, key);
                             }}
                             aria-label={`PnL para fechar trade ${t.symbol}`}
                           />
-                          <button className="btn" onClick={() => doClose(t)}>
+                          <button className="btn" onClick={() => doClose(t, key)}>
                             Fechar
                           </button>
                           <button
@@ -291,9 +293,10 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                           </button>
                           <button
                             className="btn-ghost text-rose-300 hover:text-rose-200"
-                            onClick={() => setConfirmId(t.id)}
+                            onClick={() => t.id && setConfirmId(t.id)}
                             title="Eliminar"
                             aria-label={`Eliminar trade ${t.symbol}`}
+                            disabled={!t.id}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -311,9 +314,10 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                           </button>
                           <button
                             className="btn-ghost text-rose-300 hover:text-rose-200"
-                            onClick={() => setConfirmId(t.id)}
+                            onClick={() => t.id && setConfirmId(t.id)}
                             title="Eliminar"
                             aria-label={`Eliminar trade ${t.symbol}`}
+                            disabled={!t.id}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -323,7 +327,7 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                   </tr>
 
                   {/* MOBILE: linha de detalhes/ações (só visível em md:hidden) */}
-                  <tr id={`mobile-row-${t.id}`} className="md:hidden">
+                  <tr id={`mobile-row-${key}`} className="md:hidden">
                     <td colSpan={12} className="p-0">
                       {isExpanded && (
                         <div className="px-3 pb-3">
@@ -340,15 +344,13 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                               <div>
                                 <div className="text-sub">Aberta</div>
                                 <div className="small">
-                                  {new Date(t.openAt).toLocaleString("pt-PT")}
+                                  {t.openAt ? new Date(t.openAt).toLocaleString("pt-PT") : "—"}
                                 </div>
                               </div>
                               <div>
                                 <div className="text-sub">Fechada</div>
                                 <div className="small">
-                                  {t.closedAt
-                                    ? new Date(t.closedAt).toLocaleString("pt-PT")
-                                    : "—"}
+                                  {t.closedAt ? new Date(t.closedAt).toLocaleString("pt-PT") : "—"}
                                 </div>
                               </div>
                               <div>
@@ -368,16 +370,16 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                                   className="input flex-1"
                                   placeholder="PnL (USD)"
                                   inputMode="decimal"
-                                  value={pnlInputs[t.id] ?? ""}
+                                  value={pnlInputs[key] ?? ""}
                                   onChange={(e) =>
-                                    setPnlInputs((m) => ({ ...m, [t.id]: e.target.value }))
+                                    setPnlInputs((m) => ({ ...m, [key]: e.target.value }))
                                   }
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter") doClose(t);
+                                    if (e.key === "Enter") doClose(t, key);
                                   }}
                                   aria-label={`PnL para fechar trade ${t.symbol}`}
                                 />
-                                <button className="btn" onClick={() => doClose(t)}>
+                                <button className="btn" onClick={() => doClose(t, key)}>
                                   Fechar
                                 </button>
                                 <button
@@ -390,18 +392,17 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                                 </button>
                                 <button
                                   className="btn-ghost text-rose-300 hover:text-rose-200"
-                                  onClick={() => setConfirmId(t.id)}
+                                  onClick={() => t.id && setConfirmId(t.id)}
                                   title="Eliminar"
                                   aria-label={`Eliminar trade ${t.symbol}`}
+                                  disabled={!t.id}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
                             ) : (
                               <div className="flex items-center justify-between">
-                                <span className="small">
-                                  R: {(t.r ?? 0).toFixed(2)}
-                                </span>
+                                <span className="small">R: {(t.r ?? 0).toFixed(2)}</span>
                                 <div className="flex items-center gap-2">
                                   <button
                                     className="btn-ghost"
@@ -413,9 +414,10 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                                   </button>
                                   <button
                                     className="btn-ghost text-rose-300 hover:text-rose-200"
-                                    onClick={() => setConfirmId(t.id)}
+                                    onClick={() => t.id && setConfirmId(t.id)}
                                     title="Eliminar"
                                     aria-label={`Eliminar trade ${t.symbol}`}
+                                    disabled={!t.id}
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
@@ -471,8 +473,8 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
               </button>
               <button
                 className="rounded-lg px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white text-sm disabled:opacity-60"
-                onClick={() => doDelete(confirmId)}
-                disabled={busyDelete}
+                onClick={() => confirmId && doDelete(confirmId)}
+                disabled={busyDelete || !confirmId}
               >
                 {busyDelete ? "A eliminar…" : "Eliminar"}
               </button>
