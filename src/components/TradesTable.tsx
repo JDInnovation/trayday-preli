@@ -10,19 +10,6 @@ import { deleteTrade } from "@/lib/trades";
 
 const PAGE_SIZE = 10;
 
-// 🔑 Gera uma chave estável mesmo quando t.id é undefined
-function tradeKey(t: Trade, idx: number) {
-  return String(t.id ?? t.openAt ?? t.closedAt ?? idx);
-}
-
-// 🔁 Normaliza tType para o union aceito por typeFactor: "curta" | "normal" | "longa"
-function resolveTypeKey(input?: string | null): "curta" | "normal" | "longa" {
-  const v = (input || "").toLowerCase().trim();
-  if (v === "curta" || v === "short" || v === "scalp") return "curta";
-  if (v === "longa" || v === "long" || v === "swing") return "longa";
-  return "normal";
-}
-
 export default function TradesTable({ trades }: { trades: Trade[] }) {
   const [page, setPage] = useState(0);
   const [pnlInputs, setPnlInputs] = useState<Record<string, string>>({});
@@ -37,27 +24,23 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
     [trades, page]
   );
 
-  const toggleExpand = (key: string) =>
-    setExpanded((m) => ({ ...m, [key]: !m[key] }));
+  const toggleExpand = (id: string) =>
+    setExpanded((m) => ({ ...m, [id]: !m[id] }));
 
-  const doClose = async (t: Trade, key: string) => {
+  const doClose = async (t: Trade) => {
     const uid = auth.currentUser?.uid;
     if (!uid) {
       alert("Sessão expirada. Faz login novamente.");
       return;
     }
-    if (!t.id) {
-      alert("Não é possível fechar esta trade (sem ID).");
-      return;
-    }
-    const raw = pnlInputs[key] ?? "";
+    const raw = pnlInputs[t.id] ?? "";
     const pnl = parseFloat(raw);
     if (!isFinite(pnl)) {
       alert("PnL inválido");
       return;
     }
     await closeTrade(uid, t.id, pnl);
-    setPnlInputs((m) => ({ ...m, [key]: "" }));
+    setPnlInputs((m) => ({ ...m, [t.id]: "" }));
   };
 
   const doEdit = async (t: Trade) => {
@@ -66,14 +49,19 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
       alert("Sessão expirada. Faz login novamente.");
       return;
     }
-    const symbol = prompt("Símbolo:", t.symbol || "") || t.symbol || "";
-    const side = (prompt("Lado (LONG/SHORT):", t.side || "") || t.side || "") as any;
-    const riskPct = parseFloat(prompt("Risco %:", String(t.riskPct ?? "")) || String(t.riskPct ?? ""));
-    const fees = parseFloat(prompt("Taxa (fees):", String(t.fees ?? "")) || String(t.fees ?? ""));
-    const sizeUsd = parseFloat(prompt("Tamanho USD:", String(t.sizeUsd ?? "")) || String(t.sizeUsd ?? ""));
-    const status = (prompt("Status (open/closed):", t.status || "open") || t.status || "open") as any;
+    const symbol = prompt("Símbolo:", t.symbol) || t.symbol;
+    const side = (prompt("Lado (LONG/SHORT):", t.side) || t.side) as any;
+    const riskPct = parseFloat(
+      prompt("Risco %:", String(t.riskPct)) || String(t.riskPct)
+    );
+    const fees = parseFloat(prompt("Taxa (fees):", String(t.fees)) || String(t.fees));
+    const sizeUsd = parseFloat(
+      prompt("Tamanho USD:", String(t.sizeUsd)) || String(t.sizeUsd)
+    );
+    const status = (prompt("Status (open/closed):", t.status) || t.status) as any;
     const note = prompt("Notas:", t.note || "") || "";
 
+    const rec = (t.balanceBefore || 0) * typeFactor(t.tType);
     const next: Trade = {
       ...t,
       symbol,
@@ -83,22 +71,20 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
       sizeUsd,
       status,
       note,
+      recommended: rec,
+      oversized: sizeUsd > rec,
     };
 
     if (status === "closed") {
-      const pnl = parseFloat(prompt("PnL (USD):", String(t.pnl ?? 0)) || String(t.pnl ?? 0));
+      const pnl = parseFloat(
+        prompt("PnL (USD):", String(t.pnl ?? 0)) || String(t.pnl ?? 0)
+      );
       next.pnl = pnl;
       next.closedAt = t.closedAt || Date.now();
     } else {
       next.pnl = null;
       next.closedAt = null;
     }
-
-    // Recomendações baseadas no tipo (curta/normal/longa) e saldo anterior
-    const typeKey = resolveTypeKey(next.tType ?? t.tType);
-    const rec = (t.balanceBefore || 0) * typeFactor(typeKey);
-    next.recommended = rec;
-    next.oversized = (sizeUsd || 0) > rec;
 
     await editTrade(uid, next);
   };
@@ -193,22 +179,22 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
           </thead>
 
           <tbody>
-            {pageTrades.map((t, i) => {
-              const key = tradeKey(t, i);
-              const typeKey = resolveTypeKey(t.tType);
-              const rec = (t.balanceBefore || 0) * typeFactor(typeKey);
+            {pageTrades.map((t) => {
+              const rec = (t.balanceBefore || 0) * typeFactor(t.tType);
               const oversized = (t.sizeUsd || 0) > rec;
               const isOpen = t.status === "open";
-              const isExpanded = !!expanded[key];
+              const isExpanded = !!expanded[t.id];
 
               return (
-                <React.Fragment key={t.id ?? key}>
+                <React.Fragment key={t.id}>
                   <tr
-                    className={`align-middle ${oversized ? "outline outline-2 outline-danger/50" : ""}`}
+                    className={`align-middle ${
+                      oversized ? "outline outline-2 outline-danger/50" : ""
+                    }`}
                   >
                     {/* Datas (hidden em mobile) */}
                     <td className="small hidden md:table-cell">
-                      {t.openAt ? new Date(t.openAt).toLocaleString("pt-PT") : "—"}
+                      {new Date(t.openAt).toLocaleString("pt-PT")}
                     </td>
                     <td className="small hidden md:table-cell">
                       {t.closedAt ? new Date(t.closedAt).toLocaleString("pt-PT") : "—"}
@@ -219,9 +205,9 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                       <div className="flex items-center gap-2">
                         <button
                           className="md:hidden btn-ghost p-1 rounded-lg"
-                          onClick={() => toggleExpand(key)}
+                          onClick={() => toggleExpand(t.id)}
                           aria-expanded={isExpanded}
-                          aria-controls={`mobile-row-${key}`}
+                          aria-controls={`mobile-row-${t.id}`}
                           title={isExpanded ? "Esconder detalhes" : "Mostrar detalhes"}
                         >
                           {isExpanded ? (
@@ -283,16 +269,16 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                             className="input w-28"
                             placeholder="PnL (USD)"
                             inputMode="decimal"
-                            value={pnlInputs[key] ?? ""}
+                            value={pnlInputs[t.id] ?? ""}
                             onChange={(e) =>
-                              setPnlInputs((m) => ({ ...m, [key]: e.target.value }))
+                              setPnlInputs((m) => ({ ...m, [t.id]: e.target.value }))
                             }
                             onKeyDown={(e) => {
-                              if (e.key === "Enter") doClose(t, key);
+                              if (e.key === "Enter") doClose(t);
                             }}
                             aria-label={`PnL para fechar trade ${t.symbol}`}
                           />
-                          <button className="btn" onClick={() => doClose(t, key)}>
+                          <button className="btn" onClick={() => doClose(t)}>
                             Fechar
                           </button>
                           <button
@@ -305,10 +291,9 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                           </button>
                           <button
                             className="btn-ghost text-rose-300 hover:text-rose-200"
-                            onClick={() => t.id && setConfirmId(t.id)}
+                            onClick={() => setConfirmId(t.id)}
                             title="Eliminar"
                             aria-label={`Eliminar trade ${t.symbol}`}
-                            disabled={!t.id}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -326,10 +311,9 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                           </button>
                           <button
                             className="btn-ghost text-rose-300 hover:text-rose-200"
-                            onClick={() => t.id && setConfirmId(t.id)}
+                            onClick={() => setConfirmId(t.id)}
                             title="Eliminar"
                             aria-label={`Eliminar trade ${t.symbol}`}
-                            disabled={!t.id}
                           >
                             <Trash2 className="w-4 h-4" />
                           </button>
@@ -339,7 +323,7 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                   </tr>
 
                   {/* MOBILE: linha de detalhes/ações (só visível em md:hidden) */}
-                  <tr id={`mobile-row-${key}`} className="md:hidden">
+                  <tr id={`mobile-row-${t.id}`} className="md:hidden">
                     <td colSpan={12} className="p-0">
                       {isExpanded && (
                         <div className="px-3 pb-3">
@@ -356,13 +340,15 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                               <div>
                                 <div className="text-sub">Aberta</div>
                                 <div className="small">
-                                  {t.openAt ? new Date(t.openAt).toLocaleString("pt-PT") : "—"}
+                                  {new Date(t.openAt).toLocaleString("pt-PT")}
                                 </div>
                               </div>
                               <div>
                                 <div className="text-sub">Fechada</div>
                                 <div className="small">
-                                  {t.closedAt ? new Date(t.closedAt).toLocaleString("pt-PT") : "—"}
+                                  {t.closedAt
+                                    ? new Date(t.closedAt).toLocaleString("pt-PT")
+                                    : "—"}
                                 </div>
                               </div>
                               <div>
@@ -382,16 +368,16 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                                   className="input flex-1"
                                   placeholder="PnL (USD)"
                                   inputMode="decimal"
-                                  value={pnlInputs[key] ?? ""}
+                                  value={pnlInputs[t.id] ?? ""}
                                   onChange={(e) =>
-                                    setPnlInputs((m) => ({ ...m, [key]: e.target.value }))
+                                    setPnlInputs((m) => ({ ...m, [t.id]: e.target.value }))
                                   }
                                   onKeyDown={(e) => {
-                                    if (e.key === "Enter") doClose(t, key);
+                                    if (e.key === "Enter") doClose(t);
                                   }}
                                   aria-label={`PnL para fechar trade ${t.symbol}`}
                                 />
-                                <button className="btn" onClick={() => doClose(t, key)}>
+                                <button className="btn" onClick={() => doClose(t)}>
                                   Fechar
                                 </button>
                                 <button
@@ -404,17 +390,18 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                                 </button>
                                 <button
                                   className="btn-ghost text-rose-300 hover:text-rose-200"
-                                  onClick={() => t.id && setConfirmId(t.id)}
+                                  onClick={() => setConfirmId(t.id)}
                                   title="Eliminar"
                                   aria-label={`Eliminar trade ${t.symbol}`}
-                                  disabled={!t.id}
                                 >
                                   <Trash2 className="w-4 h-4" />
                                 </button>
                               </div>
                             ) : (
                               <div className="flex items-center justify-between">
-                                <span className="small">R: {(t.r ?? 0).toFixed(2)}</span>
+                                <span className="small">
+                                  R: {(t.r ?? 0).toFixed(2)}
+                                </span>
                                 <div className="flex items-center gap-2">
                                   <button
                                     className="btn-ghost"
@@ -426,10 +413,9 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
                                   </button>
                                   <button
                                     className="btn-ghost text-rose-300 hover:text-rose-200"
-                                    onClick={() => t.id && setConfirmId(t.id)}
+                                    onClick={() => setConfirmId(t.id)}
                                     title="Eliminar"
                                     aria-label={`Eliminar trade ${t.symbol}`}
-                                    disabled={!t.id}
                                   >
                                     <Trash2 className="w-4 h-4" />
                                   </button>
@@ -485,8 +471,8 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
               </button>
               <button
                 className="rounded-lg px-3 py-1.5 bg-rose-600/80 hover:bg-rose-600 text-white text-sm disabled:opacity-60"
-                onClick={() => confirmId && doDelete(confirmId)}
-                disabled={busyDelete || !confirmId}
+                onClick={() => doDelete(confirmId)}
+                disabled={busyDelete}
               >
                 {busyDelete ? "A eliminar…" : "Eliminar"}
               </button>

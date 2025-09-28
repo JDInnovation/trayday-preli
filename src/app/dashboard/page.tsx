@@ -31,7 +31,7 @@ import { onAuthStateChanged } from "firebase/auth";
 import { auth } from "@/lib/firebase.client";
 import { listenAllTrades, listenCashflows, listenUser, saveOnboarding } from "@/lib/firestore";
 import { Cashflow, Trade, UserDoc } from "@/lib/types";
-import { endOfMonth, monthLabel, startOfMonth, ymd, daysInMonth } from "@/lib/utils";
+import { endOfMonth, monthLabel, startOfMonth, ymd, fmtMoney, daysInMonth } from "@/lib/utils";
 import { useEffect, useMemo, useState } from "react";
 import { Activity, BarChart2, Calendar, Download, Gauge, LineChart, PieChart } from "lucide-react";
 
@@ -129,15 +129,11 @@ function DashboardContent({
   const wins = tradesClosedMonth.filter((t) => (t.pnl || 0) >= 0).length;
 
   const totalDays = daysInMonth(viewYear, viewMonth);
-
-  // ✅ FIX: validar timestamp antes de criar Date (evita erro TS no build)
   const byDay: Record<string, Trade[]> = useMemo(() => {
     const map: Record<string, Trade[]> = {};
     trades.forEach((t) => {
-      const whenTs =
-        t.status === "closed" ? (t.closedAt ?? t.openAt) : t.openAt;
-      if (typeof whenTs !== "number") return;
-      const dkey = ymd(new Date(whenTs));
+      const when = t.status === "closed" ? t.closedAt || t.openAt : t.openAt;
+      const dkey = ymd(new Date(when));
       (map[dkey] ||= []).push(t);
     });
     return map;
@@ -193,20 +189,10 @@ function DashboardContent({
     ? Math.max(0, Math.ceil((e.getTime() - today.getTime()) / 86400000))
     : 0;
 
-  // ✅ FIX: calcular despesas do mês a partir dos cashflows (sem precisar de user.monthlyExpenses)
-  const expenses = useMemo(() => {
-    const monthCash = (cashflows as any[]).filter((c) => {
-      const ts = (c as any).ts ?? (c as any).date ?? 0;
-      if (typeof ts !== "number") return false;
-      return ts >= s.getTime() && ts <= e.getTime();
-    });
-    return monthCash.reduce((acc, c: any) => {
-      const amt = Number(c.amount ?? 0);
-      const isExpenseType = (c.type ?? c.kind) === "expense";
-      const asExpense = isExpenseType ? Math.abs(amt) : amt < 0 ? Math.abs(amt) : 0;
-      return acc + asExpense;
-    }, 0);
-  }, [cashflows, s, e]);
+  const expenses =
+    user.monthlyExpenses?.[
+      `${viewYear}-${String(viewMonth + 1).padStart(2, "0")}`
+    ] || 0;
 
   // ---------- TIMEFRAME + KPIs ----------
   const [tf, setTf] = useState<Timeframe>(() => {
@@ -262,7 +248,7 @@ function DashboardContent({
     <div className="flex flex-col gap-6">
       <HeaderBar />
 
-      {/* Nav secundária + Timeframe */}
+      {/* Nav secundária + Timeframe (AGORA NÃO-STICKY) */}
       <div className="card flex flex-col md:flex-row md:items-center md:justify-between gap-3">
         <AnchorNav
           items={[
@@ -290,12 +276,12 @@ function DashboardContent({
         <div className="grid md:grid-cols-3 gap-3 items-stretch">
           <TodayPulse trades={trades} currency={user.currency} />
           <RiskProgress
-            trades={trades}
-            balance={user.currentBalance || 0}
-            currency={user.currency}
-            dayLossPct={user.params?.dayLossPct ?? 9}
-            dayGoalPct={user.params?.dayGoalPct ?? 15}
-          />
+  trades={trades}
+  balance={user.currentBalance || 0}
+  currency={user.currency}
+  dayLossPct={user.params?.dayLossPct ?? 9}
+  dayGoalPct={user.params?.dayGoalPct ?? 15}
+/>
 
           <div className="card h-full flex items-center justify-center">
             <BalanceChip balance={user.currentBalance || 0} currency={user.currency} />
@@ -376,18 +362,18 @@ function DashboardContent({
         />
         <div className="grid md:grid-cols-2 gap-3">
           <OrderForm
-            balance={user.currentBalance || 0}
-            currency={user.currency}
-            riskParams={{
-              defaultRiskPct: user.params?.defaultRiskPct ?? 1.5,
-              maxLossPct: user.params?.maxLossPct ?? 2,
-              leverage: {
-                curta: user.params?.leverage?.short ?? 1.8,
-                normal: user.params?.leverage?.normal ?? 3,
-                longa: user.params?.leverage?.long ?? 6,
-              },
-            }}
-          />
+  balance={user.currentBalance || 0}
+  currency={user.currency}
+  riskParams={{
+    defaultRiskPct: user.params?.defaultRiskPct ?? 1.5,
+    maxLossPct: user.params?.maxLossPct ?? 2,
+    leverage: {
+      curta: user.params?.leverage?.short ?? 1.8,
+      normal: user.params?.leverage?.normal ?? 3,
+      longa: user.params?.leverage?.long ?? 6,
+    },
+  }}
+/>
 
           <CashflowsCard cashflows={cashflows} currency={user.currency} />
         </div>
@@ -495,7 +481,7 @@ function DashboardContent({
           year={viewYear}
           month={viewMonth}
           currency={user.currency}
-          user={{ startingBalance: user.startingBalance || 0, currentBalance: user.currentBalance || 0, email: user.email }}
+          user={{ startingBalance: user.startingBalance || 0, currentBalance: user.currentBalance || 0 }}
           monthLabel={monthLbl}
           monthPnL={monthPnL}
           expenses={expenses}
