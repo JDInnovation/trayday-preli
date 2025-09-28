@@ -1,54 +1,61 @@
-import { NextRequest, NextResponse } from "next/server";
+// src/app/api/cryptopanic/route.ts
+import { NextResponse } from "next/server";
 
+export const dynamic = "force-dynamic"; // sem cache estática
+export const revalidate = 0;
 
-const BASE = "https://cryptopanic.com/api/v1/posts/";
-
-
-export const revalidate = 180; // 3 minutos (cache lato)
-
-
-export async function GET(req: NextRequest) {
-const { searchParams } = new URL(req.url);
-const envToken = process.env.CRYPTOPANIC_API_TOKEN;
-const overrideToken = searchParams.get("token"); // opcional (para testes)
-const token = overrideToken || envToken;
-
-
-if (!token) {
-return NextResponse.json(
-{ error: "Falta CRYPTOPANIC_API_TOKEN no .env" },
-{ status: 500 }
-);
+function getToken() {
+  // 1º: Vercel env
+  const fromEnv = process.env.CRYPTOPANIC_TOKEN || process.env.NEXT_PUBLIC_CRYPTOPANIC_KEY;
+  if (fromEnv && fromEnv.trim()) return fromEnv.trim();
+  // 2º: fallback (apenas para tua conveniência local; remove em produção se quiseres)
+  return "3989fa2e280701f93e1724228eaa32709105cf4b";
 }
 
+export async function GET(req: Request) {
+  try {
+    const { searchParams } = new URL(req.url);
+    const token = getToken();
 
-// Repassamos alguns filtros úteis do CryptoPanic
-const passthrough = ["page", "kind", "currencies", "regions", "filter", "lang"]; // ex.: kind=news|media, filter=hot|important
-const params = new URLSearchParams();
-params.set("auth_token", token);
-params.set("public", "true"); // recomendado p/ plano free
-for (const key of passthrough) {
-const v = searchParams.get(key);
-if (v) params.set(key, v);
-}
+    // defaults sensatos (podes sobrepor via query)
+    const params = new URLSearchParams({
+      auth_token: token,
+      public: "true",       // modo público (recomendado p/ apps web)
+      kind: searchParams.get("kind") || "news",
+      filter: searchParams.get("filter") || "hot",
+      currencies: searchParams.get("currencies") || "", // ex: "BTC,ETH"
+      regions: searchParams.get("regions") || "",       // ex: "en,pt"
+      page: searchParams.get("page") || "",
+      per_page: searchParams.get("per_page") || "50",
+    });
 
+    // limpar vazios
+    Array.from(params.keys()).forEach((k) => {
+      if (!params.get(k)) params.delete(k);
+    });
 
-const url = `${BASE}?${params.toString()}`;
-try {
-const res = await fetch(url, { next: { revalidate: 180 } });
-if (!res.ok) {
-const text = await res.text();
-return NextResponse.json(
-{ error: "Erro no provedor", status: res.status, body: text },
-{ status: 502 }
-);
-}
-const data = await res.json();
-return NextResponse.json(data, { status: 200 });
-} catch (err: any) {
-return NextResponse.json(
-{ error: "Falha na chamada externa", detail: String(err?.message || err) },
-{ status: 502 }
-);
-}
+    const url = `https://cryptopanic.com/api/v1/posts/?${params.toString()}`;
+
+    const r = await fetch(url, {
+      // evita que o fetch do lado do servidor seja bloqueado por UA
+      headers: { "User-Agent": "TrayDay/1.0 (+https://vercel.app)" },
+      cache: "no-store",
+    });
+
+    if (!r.ok) {
+      const text = await r.text().catch(() => "");
+      return NextResponse.json(
+        { ok: false, error: `Upstream ${r.status}`, detail: text.slice(0, 500) },
+        { status: r.status }
+      );
+    }
+
+    const data = await r.json();
+    return NextResponse.json({ ok: true, ...data }, { status: 200 });
+  } catch (err: any) {
+    return NextResponse.json(
+      { ok: false, error: "proxy_failed", detail: String(err?.message || err) },
+      { status: 500 }
+    );
+  }
 }

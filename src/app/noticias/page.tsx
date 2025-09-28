@@ -2,263 +2,161 @@
 "use client";
 
 import React from "react";
-import Link from "next/link";
 import HeaderBar from "@/components/HeaderBar";
-import {
-  Newspaper,
-  Flame,
-  Star,
-  Globe,
-  RefreshCw,
-  ExternalLink,
-} from "lucide-react";
+import { Newspaper, RefreshCcw } from "lucide-react";
 
-// Tipagem mínima do payload do CryptoPanic
 type CPPost = {
-  id: string | number;
-  title: string;
-  url: string;
+  id: number | string;
+  title?: string;
+  published_at?: string;
+  url?: string;
   domain?: string;
-  source?: { title?: string; domain?: string } | null;
-  kind?: "news" | "media" | string;
-  created_at?: string; // ISO
-  published_at?: string; // ISO
-  currencies?: Array<{ code: string; title?: string }>;
+  source?: { title?: string; domain?: string };
+  kind?: string;
+  currencies?: { code: string }[];
+  votes?: { negative?: number; positive?: number; important?: number };
 };
-
-function timeAgo(iso?: string) {
-  if (!iso) return "";
-  const d = new Date(iso).getTime();
-  const diff = Date.now() - d;
-  const mins = Math.floor(diff / 60000);
-  if (mins < 1) return "agora";
-  if (mins < 60) return `há ${mins} min`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `há ${hrs} h`;
-  const days = Math.floor(hrs / 24);
-  return `há ${days} d`;
-}
-
-const CURRENCY_PRESETS: Array<{ key: string; label: string; val: string }> = [
-  { key: "all", label: "Todas", val: "" },
-  { key: "btc", label: "BTC", val: "btc" },
-  { key: "eth", label: "ETH", val: "eth" },
-  { key: "sol", label: "SOL", val: "sol" },
-  { key: "xrp", label: "XRP", val: "xrp" },
-  { key: "ada", label: "ADA", val: "ada" },
-];
 
 export default function NoticiasPage() {
   const [items, setItems] = React.useState<CPPost[]>([]);
-  const [loading, setLoading] = React.useState(false);
+  const [loading, setLoading] = React.useState(true);
   const [error, setError] = React.useState<string | null>(null);
-  const [page, setPage] = React.useState(1);
-  const [hasMore, setHasMore] = React.useState(true);
-  const [expanded, setExpanded] = React.useState<
-    Record<string | number, boolean>
-  >({});
+  const [filter, setFilter] = React.useState<"hot" | "rising" | "latest">("hot");
 
-  // Filtros
-  const [kind, setKind] = React.useState<"all" | "news" | "media">("all");
-  const [flt, setFlt] = React.useState<"" | "hot" | "important">("hot");
-  const [curr, setCurr] = React.useState<string>("");
-
-  const filtersKey = `${kind}|${flt}|${curr}`;
-
-  async function load(reset: boolean = false) {
+  const load = React.useCallback(async () => {
     setLoading(true);
     setError(null);
     try {
-      const params = new URLSearchParams();
-      if (kind !== "all") params.set("kind", kind);
-      if (flt) params.set("filter", flt);
-      if (curr) params.set("currencies", curr);
-      params.set("page", String(reset ? 1 : page));
-
-      const res = await fetch(`/api/cryptopanic?${params.toString()}`, {
-        cache: "no-store",
+      const qs = new URLSearchParams({
+        filter,
+        kind: "news",
+        per_page: "50",
+        // podes passar currencies/regions se quiseres:
+        // currencies: "BTC,ETH",
+        // regions: "en,pt",
       });
-      if (!res.ok) throw new Error(`status ${res.status}`);
+      const res = await fetch(`/api/cryptopanic?${qs.toString()}`, { cache: "no-store" });
       const data = await res.json();
-      const nextExists = Boolean((data as any)?.next);
-      const results: CPPost[] = (data as any)?.results || [];
-
-      setItems((prev) => (reset ? results : [...prev, ...results]));
-      setHasMore(nextExists || results.length > 0);
-      setPage((p) => (reset ? 2 : p + 1));
-    } catch {
-      setError("Não foi possível carregar agora. Tenta novamente.");
+      if (!res.ok || !data?.ok) {
+        throw new Error(data?.error || `HTTP ${res.status}`);
+      }
+      setItems(Array.isArray(data.results) ? data.results : []);
+    } catch (e: any) {
+      console.error(e);
+      setError("Não foi possível carregar. Tenta novamente.");
     } finally {
       setLoading(false);
     }
-  }
+  }, [filter]);
 
   React.useEffect(() => {
-    load(true);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filtersKey]);
-
-  const toggle = (id: string | number) =>
-    setExpanded((m) => ({ ...m, [id]: !m[id] }));
+    load();
+  }, [load]);
 
   return (
     <>
       <HeaderBar />
-      <main className="max-w-5xl mx-auto p-4 md:p-6 pt-20 space-y-4">
-        {/* Header */}
-        <header className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Newspaper className="w-5 h-5" />
+      <main className="max-w-6xl mx-auto p-4 md:p-6 pt-20 space-y-4">
+        <header className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="icon-btn">
+              <Newspaper className="w-5 h-5" />
+            </div>
             <h1 className="text-xl md:text-2xl font-bold">Notícias</h1>
           </div>
-          <button
-            className="btn-ghost"
-            onClick={() => load(true)}
-            disabled={loading}
-            title="Atualizar"
-          >
-            <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
-            <span className="hidden md:inline">Atualizar</span>
-          </button>
+          <div className="flex items-center gap-2">
+            <select
+              className="select"
+              value={filter}
+              onChange={(e) => setFilter(e.target.value as any)}
+              aria-label="Filtro"
+              title="Filtro de popularidade"
+            >
+              <option value="hot">Em alta</option>
+              <option value="rising">A subir</option>
+              <option value="latest">Mais recentes</option>
+            </select>
+            <button className="btn-ghost" onClick={load} title="Recarregar">
+              <RefreshCcw className="w-4 h-4" />
+              <span className="hidden sm:inline">Atualizar</span>
+            </button>
+          </div>
         </header>
 
-        {/* Filtros */}
-        <section className="card flex flex-col gap-3">
-          <div className="flex flex-wrap items-center gap-2">
-            {(["all", "news", "media"] as const).map((k) => (
-              <button
-                key={k}
-                className={`chip ${kind === k ? "ring-1" : ""}`}
-                onClick={() => setKind(k)}
-              >
-                {k === "all" ? "Todas" : k === "news" ? "News" : "Media"}
-              </button>
-            ))}
-
-            <div className="mx-2 w-px h-6 bg-white/10" />
-
-            {[
-              {
-                key: "hot",
-                label: "Em alta",
-                icon: <Flame className="w-4 h-4" />,
-              },
-              {
-                key: "important",
-                label: "Importante",
-                icon: <Star className="w-4 h-4" />,
-              },
-            ].map((f) => (
-              <button
-                key={f.key}
-                className={`chip ${flt === (f.key as any) ? "ring-1" : ""}`}
-                onClick={() => setFlt(f.key as any)}
-                title={f.label}
-              >
-                {f.icon}
-                <span>{f.label}</span>
-              </button>
-            ))}
+        {loading && (
+          <div className="card">
+            <div className="animate-pulse h-5 w-40 bg-white/10 rounded mb-2" />
+            <div className="animate-pulse h-24 bg-white/5 rounded" />
           </div>
+        )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="small text-sub">Moeda:</span>
-            {CURRENCY_PRESETS.map((c) => (
-              <button
-                key={c.key}
-                className={`chip ${curr === c.val ? "ring-1" : ""}`}
-                onClick={() => setCurr(c.val)}
-              >
-                {c.label}
-              </button>
-            ))}
+        {error && !loading && (
+          <div className="card border-danger/30">
+            <div className="text-danger">{error}</div>
+            <button className="btn mt-2" onClick={load}>Tentar novamente</button>
           </div>
-        </section>
+        )}
 
-        {/* Lista */}
-        {error && <div className="card text-danger">{error}</div>}
+        {!loading && !error && items.length === 0 && (
+          <div className="card">Sem resultados para este filtro.</div>
+        )}
 
-        <section className="grid gap-3">
-          {items.map((it) => {
-            const when = it.published_at || it.created_at;
-            const src = it.source?.title || it.domain || "Fonte";
-            const open = !!expanded[it.id];
-            return (
-              <article key={it.id} className="card">
-                <div className="flex items-center justify-between gap-2">
-                  <div className="inline-flex items-center gap-2">
-                    <span className="badge">
-                      <Globe className="w-3 h-3" /> {src}
-                    </span>
-                    {it.kind && <span className="badge">{it.kind}</span>}
-                  </div>
-                  <span className="small text-sub">{timeAgo(when)}</span>
-                </div>
-
-                <button
-                  className="mt-2 text-left"
-                  onClick={() => toggle(it.id)}
-                >
-                  <div className="text-base md:text-lg font-semibold leading-tight">
-                    {it.title}
-                  </div>
-                  <div className="small text-sub">
-                    {open ? "Clique para recolher" : "Clique para expandir"}
-                  </div>
-                </button>
-
-                {open && (
-                  <div className="mt-3 grid gap-3 md:grid-cols-[1fr_auto] md:items-start">
-                    <div className="space-y-2">
-                      <div className="flex flex-wrap gap-1.5">
-                        {(it.currencies || []).map((c) => (
-                          <span key={c.code} className="badge">
-                            {c.code}
-                          </span>
-                        ))}
-                      </div>
-                      <div className="flex gap-2">
-                        <Link
-                          href={it.url}
-                          target="_blank"
-                          className="btn"
-                          title="Abrir na fonte"
-                        >
-                          <ExternalLink className="w-4 h-4" />
-                          <span>Abrir na fonte</span>
-                        </Link>
-                      </div>
-                    </div>
-                    {/* Thumbnail opcional:
-                    <img src={thumbURL} alt="" className="w-40 h-24 object-cover rounded-lg border border-[var(--border)]" />
-                    */}
-                  </div>
-                )}
-              </article>
-            );
-          })}
-
-          {/* Loading skeleton */}
-          {loading && items.length === 0 && (
-            <div className="card opacity-70">A carregar…</div>
-          )}
-        </section>
-
-        {/* Load more */}
-        <div className="flex justify-center py-2">
-          <button
-            className="btn"
-            onClick={() => load(false)}
-            disabled={loading || !hasMore}
-          >
-            {loading
-              ? "A carregar…"
-              : hasMore
-              ? "Carregar mais"
-              : "Sem mais resultados"}
-          </button>
+        <div className="grid gap-3">
+          {items.map((it) => (
+            <ArticleCard key={String(it.id)} item={it} />
+          ))}
         </div>
       </main>
     </>
+  );
+}
+
+function ArticleCard({ item }: { item: CPPost }) {
+  const [open, setOpen] = React.useState(false);
+  const pub = item.published_at ? new Date(item.published_at) : null;
+  const domain = item.source?.domain || item.domain || (item.url ? new URL(item.url).hostname : "");
+
+  return (
+    <article className="card hover:bg-white/[0.03] transition">
+      <header
+        className="flex items-start justify-between gap-3 cursor-pointer"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+      >
+        <div className="space-y-1">
+          <h3 className="font-semibold leading-snug">{item.title || "Sem título"}</h3>
+          <div className="small text-sub">
+            {pub ? pub.toLocaleString("pt-PT") : "—"} • {domain || "—"}
+          </div>
+        </div>
+        <div className="small text-sub shrink-0">{open ? "−" : "+"}</div>
+      </header>
+
+      {open && (
+        <div className="mt-2 space-y-2">
+          {!!item.currencies?.length && (
+            <div className="small text-sub">
+              Moedas: {item.currencies.map((c) => c.code).join(", ")}
+            </div>
+          )}
+          {!!item.votes && (
+            <div className="small text-sub">
+              👍 {item.votes.positive ?? 0} • 👎 {item.votes.negative ?? 0} • ⭐ {item.votes.important ?? 0}
+            </div>
+          )}
+          {item.url && (
+            <a
+              href={item.url}
+              target="_blank"
+              rel="noreferrer"
+              className="btn"
+              title="Abrir fonte"
+            >
+              Ler na fonte
+            </a>
+          )}
+        </div>
+      )}
+    </article>
   );
 }
