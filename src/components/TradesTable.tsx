@@ -15,6 +15,14 @@ function tradeKey(t: Trade, idx: number) {
   return String(t.id ?? t.openAt ?? t.closedAt ?? idx);
 }
 
+// 🔁 Normaliza tType para o union aceito por typeFactor: "curta" | "normal" | "longa"
+function resolveTypeKey(input?: string | null): "curta" | "normal" | "longa" {
+  const v = (input || "").toLowerCase().trim();
+  if (v === "curta" || v === "short" || v === "scalp") return "curta";
+  if (v === "longa" || v === "long" || v === "swing") return "longa";
+  return "normal";
+}
+
 export default function TradesTable({ trades }: { trades: Trade[] }) {
   const [page, setPage] = useState(0);
   const [pnlInputs, setPnlInputs] = useState<Record<string, string>>({});
@@ -66,7 +74,6 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
     const status = (prompt("Status (open/closed):", t.status || "open") || t.status || "open") as any;
     const note = prompt("Notas:", t.note || "") || "";
 
-    const rec = (t.balanceBefore || 0) * typeFactor(t.tType);
     const next: Trade = {
       ...t,
       symbol,
@@ -76,8 +83,6 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
       sizeUsd,
       status,
       note,
-      recommended: rec,
-      oversized: (sizeUsd || 0) > rec,
     };
 
     if (status === "closed") {
@@ -88,6 +93,12 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
       next.pnl = null;
       next.closedAt = null;
     }
+
+    // Recomendações baseadas no tipo (curta/normal/longa) e saldo anterior
+    const typeKey = resolveTypeKey(next.tType ?? t.tType);
+    const rec = (t.balanceBefore || 0) * typeFactor(typeKey);
+    next.recommended = rec;
+    next.oversized = (sizeUsd || 0) > rec;
 
     await editTrade(uid, next);
   };
@@ -184,7 +195,8 @@ export default function TradesTable({ trades }: { trades: Trade[] }) {
           <tbody>
             {pageTrades.map((t, i) => {
               const key = tradeKey(t, i);
-              const rec = (t.balanceBefore || 0) * typeFactor(t.tType);
+              const typeKey = resolveTypeKey(t.tType);
+              const rec = (t.balanceBefore || 0) * typeFactor(typeKey);
               const oversized = (t.sizeUsd || 0) > rec;
               const isOpen = t.status === "open";
               const isExpanded = !!expanded[key];
