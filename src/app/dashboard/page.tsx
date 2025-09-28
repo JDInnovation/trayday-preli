@@ -129,11 +129,15 @@ function DashboardContent({
   const wins = tradesClosedMonth.filter((t) => (t.pnl || 0) >= 0).length;
 
   const totalDays = daysInMonth(viewYear, viewMonth);
+
+  // ✅ FIX: validar timestamp antes de criar Date (evita erro TS no build)
   const byDay: Record<string, Trade[]> = useMemo(() => {
     const map: Record<string, Trade[]> = {};
     trades.forEach((t) => {
-      const when = t.status === "closed" ? t.closedAt || t.openAt : t.openAt;
-      const dkey = ymd(new Date(when));
+      const whenTs =
+        t.status === "closed" ? (t.closedAt ?? t.openAt) : t.openAt;
+      if (typeof whenTs !== "number") return; // ignora trades sem timestamp válido
+      const dkey = ymd(new Date(whenTs));
       (map[dkey] ||= []).push(t);
     });
     return map;
@@ -276,12 +280,12 @@ function DashboardContent({
         <div className="grid md:grid-cols-3 gap-3 items-stretch">
           <TodayPulse trades={trades} currency={user.currency} />
           <RiskProgress
-  trades={trades}
-  balance={user.currentBalance || 0}
-  currency={user.currency}
-  dayLossPct={user.params?.dayLossPct ?? 9}
-  dayGoalPct={user.params?.dayGoalPct ?? 15}
-/>
+            trades={trades}
+            balance={user.currentBalance || 0}
+            currency={user.currency}
+            dayLossPct={user.params?.dayLossPct ?? 9}
+            dayGoalPct={user.params?.dayGoalPct ?? 15}
+          />
 
           <div className="card h-full flex items-center justify-center">
             <BalanceChip balance={user.currentBalance || 0} currency={user.currency} />
@@ -362,18 +366,18 @@ function DashboardContent({
         />
         <div className="grid md:grid-cols-2 gap-3">
           <OrderForm
-  balance={user.currentBalance || 0}
-  currency={user.currency}
-  riskParams={{
-    defaultRiskPct: user.params?.defaultRiskPct ?? 1.5,
-    maxLossPct: user.params?.maxLossPct ?? 2,
-    leverage: {
-      curta: user.params?.leverage?.short ?? 1.8,
-      normal: user.params?.leverage?.normal ?? 3,
-      longa: user.params?.leverage?.long ?? 6,
-    },
-  }}
-/>
+            balance={user.currentBalance || 0}
+            currency={user.currency}
+            riskParams={{
+              defaultRiskPct: user.params?.defaultRiskPct ?? 1.5,
+              maxLossPct: user.params?.maxLossPct ?? 2,
+              leverage: {
+                curta: user.params?.leverage?.short ?? 1.8,
+                normal: user.params?.leverage?.normal ?? 3,
+                longa: user.params?.leverage?.long ?? 6,
+              },
+            }}
+          />
 
           <CashflowsCard cashflows={cashflows} currency={user.currency} />
         </div>
