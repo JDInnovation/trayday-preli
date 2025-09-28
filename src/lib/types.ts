@@ -6,6 +6,7 @@ export type TradeStatus = "open" | "closed";
 export interface Trade {
   id?: string;
   symbol?: string;
+  ticker?: string;       // ⬅️ alias para compatibilidade com código que usa 'ticker'
   side?: Side;
   status?: TradeStatus;
   openAt?: number | null;
@@ -35,11 +36,10 @@ export interface Cashflow {
 }
 
 export interface TradingLeverage {
-  /** em alguns sítios do UI pode aparecer como "curta" */
   short?: number;
   normal?: number;
   long?: number;
-  /** aliases PT para compatibilidade com código existente */
+  // aliases PT para compat:
   curta?: number;
   longa?: number;
 }
